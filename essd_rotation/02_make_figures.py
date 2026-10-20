@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
 from lib.config import load_config, output_path
 from lib.figures.fig_rotation import run_figures
 
-_DEFAULT_FIG_DIR = Path("/home/apelliss/Documents/Resultat_France/Figures/ESSD")
+_DEFAULT_FIG_DIR = Path("/path/to/Resultat_France/Figures/ESSD")
 
 
 def main() -> None:

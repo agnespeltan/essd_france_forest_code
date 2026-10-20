@@ -25,9 +25,7 @@ from lib.config import load_config
 from lib.figures.fig_disturbances import run_figures
 from lib.figures.prepare_table import write_figure_table
 
-_DEFAULT_FIG_DIR = Path(
-    "/home/apelliss/Documents/Resultat_France/Figures/ESSD"
-)
+_DEFAULT_FIG_DIR = Path("/path/to/Resultat_France/Figures/ESSD")
 
 
 def main() -> None:

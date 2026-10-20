@@ -17,7 +17,7 @@ from lib.figures.fig_rotation import run_figures
 from lib.nfi.harvest_ages import build_harvest_ages
 from lib.rotation.attach import attach_rotation
 
-_DEFAULT_FIG_DIR = Path("/home/apelliss/Documents/Resultat_France/Figures/ESSD")
+_DEFAULT_FIG_DIR = Path("/path/to/Resultat_France/Figures/ESSD")
 
 
 def main() -> None:

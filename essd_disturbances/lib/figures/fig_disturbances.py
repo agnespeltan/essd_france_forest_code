@@ -44,20 +44,20 @@ _REL_AGBD_COLUMNS = (_REL_AGBD_STD, _REL_AGBD_CONS, RELATIVE_AGBD_LOSS_COLUMN)
 ROTATION_PERIOD_COLUMN = 'rotation_period'
 ROTATION_PERIOD_ERROR_COLUMN = 'rotation_period_err'
 TREE_COVER_LOW_THRESHOLD = 0.10
-_TREE_COVER_PATH = '/home/apelliss/Documents/Resultat_France/Features_30m/tree_cover_map.tif'
+_TREE_COVER_PATH = '/path/to/Resultat_France/Features_30m/tree_cover_map.tif'
 _EXPLOITABILITY_PATH = (
-    '/home/apelliss/Documents/Resultat_France/Features_30m/Geomorphometry_30m/exploitabilite.tif'
+    '/path/to/Resultat_France/Features_30m/Geomorphometry_30m/exploitabilite.tif'
 )
 _FOREST_TFV_MASK_PATH = (
-    '/home/apelliss/Documents/Resultat_France/Features_30m/Foret_30m/BD_Foret_TFVnum_30m_valideNR.tif'
+    '/path/to/Resultat_France/Features_30m/Foret_30m/BD_Foret_TFVnum_30m_valideNR.tif'
 )
 _PATCH_PIXEL_AREA_HA = (30.0 * 30.0) / 10000.0  # 30 m pixel = 0.09 ha
 _5KM_TARGET_RES_M = 5000.0
 _EXPLOITABLE_FRAC_FOREST_5KM_TIF = (
-    '/home/apelliss/Documents/Resultat_France/Data/exploitability_fraction_forest_5km_tc10.tif'
+    '/path/to/Resultat_France/Data/exploitability_fraction_forest_5km_tc10.tif'
 )
 _FOREST_PIXEL_COUNT_5KM_TIF = (
-    '/home/apelliss/Documents/Resultat_France/Data/forest_pixel_count_5km_tc10.tif'
+    '/path/to/Resultat_France/Data/forest_pixel_count_5km_tc10.tif'
 )
 _DOT_WHISKER_OFFSET = 0.2
 _DOT_MARKERSIZE = 11
@@ -85,13 +85,9 @@ AGB_MAP_SIGMA_MG_HA = 60.0
 AGBD_LOSS_MAP_SIGMA_MG_HA = np.sqrt(2.0) * AGB_MAP_SIGMA_MG_HA
 CARBON_FRACTION = 0.475
 # Kowalski / Planet AGBD loss on 10 km ETRS89-LAEA grid (Europe → clipped to France)
-_KOWALSKI_LOSS_CSV = (
-    '/home/apelliss/Documents/Autres_donnes/Severity_Katja/planet_agbd_loss_10km.csv'
-)
-_KOWALSKI_GRID_SHP = (
-    '/home/apelliss/Documents/Autres_donnes/Severity_Katja/grid_10km_3035.shp'
-)
-_FRANCE_OUTLINE_SHP = '/home/apelliss/Documents/IGN_donnees/France_1km.shp'
+_KOWALSKI_LOSS_CSV = '/path/to/Severity_Katja/planet_agbd_loss_10km.csv'
+_KOWALSKI_GRID_SHP = '/path/to/Severity_Katja/grid_10km_3035.shp'
+_FRANCE_OUTLINE_SHP = '/path/to/IGN_donnees/France_1km.shp'
 # Normal approximation: 95% CI = estimate ± z * SE
 NATIONAL_CI_Z_95 = 1.96
 # Relative-uncertainty map masking (unused): was grey when area < 0.2% and rel. unc. > 200%
@@ -396,7 +392,7 @@ def write_si11_kowalski_figure(
     loss_csv: str | Path = _KOWALSKI_LOSS_CSV,
     grid_shp: str | Path = _KOWALSKI_GRID_SHP,
     france_shp: str | Path = _FRANCE_OUTLINE_SHP,
-    ser_shapefile: str | Path = '/home/apelliss/Documents/IGN_donnees/France_ser.shp',
+    ser_shapefile: str | Path = '/path/to/IGN_donnees/France_ser.shp',
     harvest_agg: pd.DataFrame | None = None,
     natural_agg: pd.DataFrame | None = None,
     abs_sev_col: str = AGBD_LOSS_COLUMN,
@@ -600,8 +596,8 @@ def run_figures(
     trend_csv: str | Path,
     figure_dir: str | Path,
     *,
-    ser_shapefile: str | Path = '/home/apelliss/Documents/IGN_donnees/France_ser.shp',
-    greco_shapefile: str | Path = '/home/apelliss/Documents/IGN_donnees/France_greco.shp',
+    ser_shapefile: str | Path = '/path/to/IGN_donnees/France_ser.shp',
+    greco_shapefile: str | Path = '/path/to/IGN_donnees/France_greco.shp',
     kowalski_loss_csv: str | Path | None = None,
     kowalski_grid_shp: str | Path | None = None,
     interactive: bool = False,
@@ -774,7 +770,7 @@ def run_figures(
 
     # Load GRECO shapefile for overlay
     greco_gdf = gpd.read_file(str(greco_shapefile))
-    france_gdf = gpd.read_file('/home/apelliss/Documents/IGN_donnees/France_1km.shp')
+    france_gdf = gpd.read_file(_FRANCE_OUTLINE_SHP)
 
 
     def _group_df_for_national_se(df, tfv_col=TFV_COL):

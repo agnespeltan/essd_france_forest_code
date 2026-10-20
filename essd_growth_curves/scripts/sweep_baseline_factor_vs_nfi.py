@@ -235,7 +235,7 @@ def main() -> None:
         "--nfi-greco",
         type=Path,
         default=Path(
-            "/home/apelliss/Documents/Field_data/Inventaire_national_forestier/"
+            "/path/to/Inventaire_national_forestier/"
             "AGB/growth/B_CACGK_GRECO_2005_2024.csv"
         ),
     )
@@ -243,14 +243,14 @@ def main() -> None:
         "--nfi-species",
         type=Path,
         default=Path(
-            "/home/apelliss/Documents/Field_data/Inventaire_national_forestier/"
+            "/path/to/Inventaire_national_forestier/"
             "AGB/growth/B_CACGK_esspre_2005_2024.csv"
         ),
     )
     p.add_argument(
         "--area",
         type=Path,
-        default=Path("/home/apelliss/Documents/Resultat_France/Data/France_TFVs_area.parquet"),
+        default=Path("/path/to/Resultat_France/Data/France_TFVs_area.parquet"),
     )
     p.add_argument("--out-dir", type=Path, default=None)
     args = p.parse_args()

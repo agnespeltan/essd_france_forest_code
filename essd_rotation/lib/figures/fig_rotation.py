@@ -42,7 +42,7 @@ _SI_PANEL_LABEL_FONTSIZE = 14
 _SI_LEGEND_MARKERSIZE = 7
 _HARVEST_MARKER = "o"
 _NATURAL_MARKER = "s"
-_DEFAULT_FRANCE_OUTLINE = Path("/home/apelliss/Documents/IGN_donnees/France_1km.shp")
+_DEFAULT_FRANCE_OUTLINE = Path("/path/to/IGN_donnees/France_1km.shp")
 _SI_LEGEND_ELEMENTS = [
     Line2D(
         [0],

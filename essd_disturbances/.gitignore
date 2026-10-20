@@ -9,3 +9,6 @@ venv/
 
 *.log
 *.tmp
+
+# Local run outputs (never commit)
+_out/
