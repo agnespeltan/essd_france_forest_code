@@ -2,6 +2,10 @@
 
 Disturbance **rates**, **patch sizes**, and **AGB-loss severity** for France at species category (TFV) × small ecological region (SER) × agent. Trends use Mann–Kendall / Theil–Sen on annual patch stats; severity uses a space-for-time AGB quantile contrast. Figures (Fig. 4–5, SI7–SI11) are written by `05_make_figures.py`.
 
+## Data
+
+Published `disturbance_trends.csv` and `disturbance_severity.csv` are in the companion Zenodo data deposit (**DOI pending**). See the [repository root README](../README.md).
+
 ## Terms
 
 | Name | Meaning |

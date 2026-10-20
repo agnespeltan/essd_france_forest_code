@@ -2,6 +2,10 @@
 
 Build GRECO × TFV AGB–age statistics from 30 m rasters, then fit Chapman–Richards curves.
 
+## Data
+
+Published curves (`growth_curves_agb_greco.csv`) are in the companion Zenodo data deposit (**DOI pending**). See the [repository root README](../README.md).
+
 ## Terms
 
 
