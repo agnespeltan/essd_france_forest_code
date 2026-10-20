@@ -1,0 +1,61 @@
+# Copy to config.yaml and edit paths for your machine.
+# Or pass --config /path/to/config.yaml
+
+output_dir: /path/to/Resultat_France/Data_clean
+# IGN SER polygons (codeser A11 → numeric 111, or ser_num / square_id)
+ser_shapefile: /path/to/IGN_donnees/France_ser.shp
+
+# 30 m rasters (must share grid with AGB)
+rasters:
+  tfv: /path/to/Features_30m/Foret_30m/BD_Foret_TFVnum_30m_valideNR.tif
+  # Multi-band agent: band 1 = agent_first_year, … (1=natural wind/bb, 2=fire, 3=harvest)
+  agent_multilayer: /path/to/Features_30m/Disturbances_30m/disturbance_agent_1985_2024_france_L93_30m.tif
+  agb: /path/to/Features_30m/Targets_30m/AGB_Martin.tif
+  # Optional pins for 00 outputs (defaults under output_dir):
+  # disturbance_year:  /path/to/.../latest_disturbance_year_le2024_30m.tif
+  # disturbance_agent: /path/to/.../latest_disturbance_agent_le2024_30m.tif
+
+agent_first_year: 1985
+agent_last_year: 2024          # inclusive upper year in the latest year/agent maps
+agent_nodata: 255
+agent_min_valid_value: 1
+# latest_year_block_size: 1024
+# force_rebuild_latest_year: false
+workers: 4
+
+# Intermediate / final products (under output_dir)
+outputs:
+  patches: disturbance_patches.parquet
+  agb_stats: disturbance_agb_stats.parquet
+  trends: disturbance_trends.csv
+  severity: disturbance_severity.csv
+  figure_table: disturbance_trends_for_figures.csv
+
+# Combined PNGs from 05_make_figures.py (no rotation panels)
+# figure_dir: /path/to/Resultat_France/Figures/ESSD
+
+# Kowalski / Planet severity for SI11 (Europe 10 km grid; clipped to France)
+# kowalski_loss_csv: /path/to/Severity_Katja/planet_agbd_loss_10km.csv
+# kowalski_grid_shp: /path/to/Severity_Katja/grid_10km_3035.shp
+
+# Optional overrides if reusing existing parquets without rebuilding:
+# patches_parquet: /path/to/disturbance_patches.parquet
+# agb_stats_parquet: /path/to/disturbance_agb_stats.parquet
+# agb_counts_parquet: null   # counts live in agb_stats when built by 01
+
+# Trend window (inclusive)
+year_start: 1999
+year_end: 2024
+min_years_ser: 10
+min_years_mk: 4
+
+# AGB severity windows (inclusive). later years = pre-disturbance reference.
+before_range: "2021-2024"
+after_range: "2016-2019"
+
+excluded_tfv:
+  - 0
+  - 400
+  - forest
+  - 504
+  - 506

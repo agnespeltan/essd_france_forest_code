@@ -1,0 +1,65 @@
+# Copy to config.yaml and edit paths for your machine.
+# Or pass --config /path/to/config.yaml
+
+data_root: /path/to/Resultat_France
+features_root: /path/to/Resultat_France/Features_30m
+greco_shapefile: /path/to/IGN_donnees/France_greco.shp
+output_dir: /path/to/Resultat_France/Data_clean
+figure_dir: /path/to/Resultat_France/Figures/ESSD
+
+# Figures (05_make_figures.py). area_parquet is required; NFI / Robinson are optional
+# (omit or leave unset → RS-only Fig. 2 / SI2; SI1 never needs NFI).
+figures:
+  area_parquet: /path/to/France_TFVs_area.parquet          # 30 m pixel counts → Mha
+  # robinson_parquet: /path/to/France_CP2_median.parquet
+  # nfi_species_csv: /path/to/B_CACGK_esspre_2005_2024.csv
+  # nfi_greco_csv: /path/to/B_CACGK_GRECO_2005_2024.csv
+  # nfi_species_curves: /path/to/growth_curves_NFI_species.csv
+  # nfi_greco_curves: /path/to/growth_curves_NFI_GRECO.csv
+
+# Raster inputs (relative to features_root unless absolute)
+rasters:
+  tfv: Foret_30m/BD_Foret_TFVnum_30m_valideNR.tif
+  # Multi-band agent cube → reduced by 00_materialize_year.py to one year GeoTIFF.
+  agent_multilayer: Disturbances_30m/disturbance_agent_1985_2024_france_L93_30m.tif
+  # Optional: pin year output (default: output_dir/latest_disturbance_year_lt2020_30m.tif)
+  # disturbance_year: Disturbances_30m/latest_disturbance_year_lt2020_30m.tif
+  gami_age_mean: Age_Simon_mean_30m.tif   # GAMI mean age (on-disk name may still say Simon)
+  agb: Targets_30m/AGB_Martin.tif
+
+# Agent multilayer encoding
+agent_first_year: 1985          # band 1 → 1985, band 40 → 2024
+# agent_max_year: 2020          # default = reference_year (ignore ≥ this)
+agent_nodata: 255
+agent_min_valid_value: 1
+# latest_year_block_size: 1024
+# force_rebuild_latest_year: false
+
+stats:
+  efda: growth_stats_efda_greco.parquet
+  gami: growth_stats_gami_greco.parquet
+
+curves:
+  agb: growth_curves_agb_greco.csv
+
+fit_targets:
+  - agb
+
+workers: 4
+reference_year: 2020
+min_age_gami: 35
+# EFDA young-stand offset, then keep ages >= age_baseline_age:
+#   AGB' = AGB − f × AGB(a0)   (constant; omit baseline_taper_years)
+age_baseline_age: 2
+age_baseline_factor: 0.85
+# baseline_taper_years: 10
+# Gap-fill Rule 0: keep local fits only if min(R2_25, R2_50, R2_75) > r2_min.
+# Then Rules 1–3 in lib/fit/fill_missing.py (group max-area → climate J/K→F, B/F→G).
+r2_min: 0.2
+
+excluded_tfv:
+  - 0
+  - 400
+  - forest
+  - 504
+  - 506

@@ -1,0 +1,90 @@
+# Copy to config.yaml and edit paths for your machine.
+# Same folder layout as essd_growth_curves / essd_disturbances / essd_rotation.
+
+data_root: /path/to/Resultat_France
+features_root: /path/to/Resultat_France/Features_30m
+greco_shapefile: /path/to/IGN_donnees/France_greco.shp
+output_dir: /path/to/Resultat_France/Data_clean
+figure_dir: /path/to/Resultat_France/Figures/ESSD
+
+# Chapman–Richards curves (default: essd_growth_curves product under output_dir)
+growth_curves_csv: growth_curves_agb_greco.csv
+
+# 30 m rasters — relative to features_root unless absolute
+# disturbance_year is relative to output_dir
+rasters:
+  agb: Targets_30m/AGB_Martin.tif
+  tfv: Foret_30m/BD_Foret_TFVnum_30m_valideNR.tif
+  # Full agent stack (used by 00b to build the le2021 year map)
+  agent_multilayer: Disturbances_30m/disturbance_agent_1985_2024_france_L93_30m.tif
+  # Latest disturbance year with year ≤ 2021 (built by 00b / auto in 03)
+  disturbance_year: latest_disturbance_year_le2021_30m.tif
+  # Optional: pin an existing weighted map instead of outputs.weighted
+  # age_weighted: /path/to/.../forest_age_blend_q50.tif
+
+# Keep age==0 & AGB==0 when latest disturbance year ∈ this set
+disturbance_keep_years: [2019, 2020, 2021]
+
+# Product knobs (affect output filenames)
+quantile: 50
+not_corrected: true
+use_thinning: false
+use_forest_aggregates: false
+include_bef: true
+
+# GRECO soft-edge weights (00)
+max_distance_km: 30           # soft edge scale (km); 30 matches existing GRECO_*_weights.tif
+
+# Blend tile size (02)
+tile_size: 16384
+
+# 01: block size for weight-masked invert (only where greco_*_weights > 0)
+block_size: 2048
+workers: 1
+low_memory: true
+
+outputs:
+  # Relative to output_dir (Data_clean). Copy existing Features_30m/GRECO/greco_*_weights.tif here
+  # or run 00_build_greco_weights.py
+  weights_dir: GRECO
+  tiles_dir: Age_tiles
+  # weighted / fixed default from naming.py if omitted
+  # weighted: forest_age_blend_q50.tif
+  # fixed: forest_age_q50.tif
+
+# All figure inputs must live here (no hardcoded paths in lib/figures).
+# NFI CSVs are optional (omit → RS/GAMI-only Fig. 3a; SI4/SI5 skipped).
+figures:
+  # Prefer fixed products (excl_2019_2021). Use 5 km maps for map panels when available.
+  age_main: /path/to/.../age_map_weighted_50_not_corrected_excl_2019_2021.tif
+  age_lo: /path/to/.../age_map_weighted_25_not_corrected_excl_2019_2021.tif
+  age_hi: /path/to/.../age_map_weighted_75_not_corrected_excl_2019_2021.tif
+  age_main_5km: /path/to/.../age_map_weighted_50_5km_not_corrected_excl_2019_2021.tif
+  age_lo_5km: /path/to/.../age_map_weighted_25_5km_not_corrected_excl_2019_2021.tif
+  age_hi_5km: /path/to/.../age_map_weighted_75_5km_not_corrected_excl_2019_2021.tif
+  # SI3 extras — CV built by 03b_build_summaries.py (forest_age_q50_cv_5km.tif)
+  # age_cv_5km: /path/to/.../forest_age_q50_cv_5km.tif
+  # ours_minus_gami_5km: /path/to/.../ours_minus_gami_5km.tif
+  # rel_unc_5km: /path/to/.../age_rel_unc_5km.tif   # else built from age_*_5km
+  tree_cover: /path/to/Features_30m/tree_cover_map.tif
+  france_shapefile: /path/to/IGN_donnees/France.shp
+  # GAMI national histogram (value / value_lower / value_upper)
+  gami_hist: /path/to/Features_30m/Age_Simon_mean_30m_hist.csv
+  # SI4 — GAMI by TFV (NPZ: tfv, age, counts[, pixel_area_ha]); lo/hi optional
+  # gami_hist_by_tfv: /path/to/.../Age_Simon_mean_age_hist_by_tfv.npz
+  # gami_hist_by_tfv_lo: /path/to/.../Age_Simon_lower_age_hist_by_tfv.npz
+  # gami_hist_by_tfv_hi: /path/to/.../Age_Simon_upper_age_hist_by_tfv.npz
+  # SI5 — GAMI by GRECO (same NPZ shape with greco key)
+  # gami_hist_by_greco: /path/to/.../Age_Simon_mean_age_hist_by_greco.npz
+  # gami_hist_by_greco_lo: /path/to/.../Age_Simon_lower_age_hist_by_greco.npz
+  # gami_hist_by_greco_hi: /path/to/.../Age_Simon_upper_age_hist_by_greco.npz
+  # SI6b — Ours−GAMI TFV: CSV (q25,q50,q75,area,tfv) or diff-hist NPZ
+  # ours_minus_gami_tfv_csv: /path/to/.../age_map_ours_minus_gami_diff_hist_30m_by_tfv.npz
+  # RS age histograms (age, count[, tfv, ser])
+  rs_hist_main: /path/to/.../age_map_weighted_50_not_corrected_excl_2019_2021_hist.csv
+  rs_hist_lo: /path/to/.../age_map_weighted_25_not_corrected_excl_2019_2021_hist.csv
+  rs_hist_hi: /path/to/.../age_map_weighted_75_not_corrected_excl_2019_2021_hist.csv
+  # NFI (optional — omit → Fig. 3a without NFI; SI4/SI5 skipped)
+  # nfi_aires_age: /path/to/NFI/Aires_age.csv
+  # nfi_surf_esspre: /path/to/NFI/surf_CACGK_esspre_2020_2024.csv
+  # nfi_surf_greco: /path/to/NFI/surf_CACGK_GRECO_2020_2024.csv

@@ -1,0 +1,8 @@
+numpy
+pandas
+pymannkendall
+pyyaml
+pyarrow
+rasterio
+geopandas
+scipy

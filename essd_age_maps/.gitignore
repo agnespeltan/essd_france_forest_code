@@ -1,0 +1,12 @@
+# Local machine config (keep config.example.yaml)
+config.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+*.log
+*.tmp
+_out/
