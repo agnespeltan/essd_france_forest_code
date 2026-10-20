@@ -4,7 +4,7 @@ NFI harvest ages → cascade-fill onto disturbance trends → figures (Fig. 6, S
 
 ## Data
 
-Published `rotation_periods.csv` is in the companion Zenodo data deposit (**DOI pending**). See the [repository root README](../README.md). NFI microdata are not redistributed (configure local paths in `config.yaml`).
+Published `rotation_periods.csv` is in the companion Zenodo data deposit: [10.5281/zenodo.23499335](https://doi.org/10.5281/zenodo.23499335). See the [repository root README](../README.md). NFI microdata are not redistributed (configure local paths in `config.yaml`).
 
 ## Terms
 

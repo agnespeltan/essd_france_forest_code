@@ -17,8 +17,8 @@ Each package has `config.example.yaml`, `requirements.txt`, and its own README. 
 
 Published products (CSVs + age GeoTIFFs) are on Zenodo (separate deposit from this code):
 
-- **DOI:** pending — update this line when the data deposit is published  
-- Archives: `growth_curves.zip`, `age_map.zip`, `disturbance_rate_patches.zip`, `disturbance_severity.zip`, `rotation_periods.zip`
+- **DOI:** [10.5281/zenodo.23499335](https://doi.org/10.5281/zenodo.23499335)
+- Archives: `growth_curves.zip`, `age_map.zip`, `disturbance_rate_patches.zip`, `disturbance_severity.zip`, `rotation_periods.zip`, plus `tfv_codes.csv` / `ser_codes.csv`
 
 **Data license:** CC BY 4.0
 

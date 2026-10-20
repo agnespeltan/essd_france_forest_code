@@ -4,7 +4,7 @@ Disturbance **rates**, **patch sizes**, and **AGB-loss severity** for France at 
 
 ## Data
 
-Published `disturbance_trends.csv` and `disturbance_severity.csv` are in the companion Zenodo data deposit (**DOI pending**). See the [repository root README](../README.md).
+Published `disturbance_trends.csv` and `disturbance_severity.csv` are in the companion Zenodo data deposit: [10.5281/zenodo.23499335](https://doi.org/10.5281/zenodo.23499335). See the [repository root README](../README.md).
 
 ## Terms
 

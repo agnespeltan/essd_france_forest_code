@@ -4,7 +4,7 @@ National forest age from AGB via Chapman–Richards inversion, GRECO soft blendi
 
 ## Data
 
-Published age GeoTIFFs (`forest_age_q50/q25/q75.tif`) are in the companion Zenodo data deposit (**DOI pending**). See the [repository root README](../README.md).
+Published age GeoTIFFs (`forest_age_q50/q25/q75.tif`) are in the companion Zenodo data deposit: [10.5281/zenodo.23499335](https://doi.org/10.5281/zenodo.23499335). See the [repository root README](../README.md).
 
 ## Terms
 
