@@ -1,6 +1,10 @@
 # ESSD France forest code
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23503540.svg)](https://doi.org/10.5281/zenodo.23503540)
+
 Python pipelines for species- and region-specific **growth curves**, **forest age**, **disturbance** metrics, and **harvest rotation periods** for metropolitan French forests (30 m, reference year 2020). Companion code to Pellissier-Tanon et al., *Earth System Science Data* (submitted).
+
+**Code DOI:** [10.5281/zenodo.23503540](https://doi.org/10.5281/zenodo.23503540) · **GitHub:** https://github.com/agnespeltan/essd_france_forest_code
 
 ## Packages
 
