@@ -80,7 +80,7 @@ def _load_disturbances_materialize():
 
 
 def ensure_disturbance_year(cfg: dict[str, Any], *, force: bool = False) -> Path:
-    """Build or reuse the le{max_keep} latest-year GeoTIFF used by ``03_fix_nodata``."""
+    """Build or reuse the le{max_keep} latest-year GeoTIFF used by ``03_finalize_age_map``."""
     out = year_path(cfg)
     max_year = keep_max_year(cfg)
     stack = agent_stack_path(cfg)

@@ -56,6 +56,9 @@ age_baseline_factor: 0.85
 # Gap-fill Rule 0: keep local fits only if min(R2_25, R2_50, R2_75) > r2_min.
 # Then Rules 1–3 in lib/fit/fill_missing.py (group max-area → climate J/K→F, B/F→G).
 r2_min: 0.2
+tail_trim_age: 90        # above this age, cut each quantile series at its first >5 % drop (null = no trim)
+tail_trim_delta: 0.05
+tail_trim_patience: 1
 
 excluded_tfv:
   - 0
@@ -63,3 +66,24 @@ excluded_tfv:
   - forest
   - 504
   - 506
+
+# Sensitivity tests (08_sensitivity_tests.py, 09_make_sensitivity_figures.py).
+# Need figures.nfi_greco_csv, figures.nfi_species_csv and figures.area_parquet.
+# Each run refits the curves with one change; everything else comes from this config.
+sensitivity:
+  out_dir: sensitivity              # under output_dir
+  reference_factor: 0.85            # Δ% reference for the baseline factor f
+  baseline_grid:                    # young-stand baseline: ages a0 × factors f
+    ages: [2]
+    factors: [0.75, 0.80, 0.85, 0.90, 0.95, 1.0]
+    # tapers: [5, 10]               # optional linear fade (yr); omit for none
+  settings:                         # sweep name → {config key: values}; none = switched off
+    trim_age_r2:
+      tail_trim_age: [none, 70, 90, 110, 130]
+      r2_min: [0, 0.1, 0.2, 0.3, 0.5]
+    trim_delta:
+      tail_trim_delta: [0.01, 0.02, 0.05, 0.10, 0.20, 0.50]
+      tail_trim_patience: [1, 2, 3]
+    b_min:
+      cr_b_min: [0.01, 0.005, 0.002, 0.001, 0.0005]
+  # figure_params: [tail_trim_age, r2_min, age_baseline_factor]   # rows of the SI figure (default: all)

@@ -8,9 +8,8 @@ RS_MAIN_Q = "50"
 RS_ENV_LO_Q = "25"
 RS_ENV_HI_Q = "75"
 
-# Curve panels (a–f) historically used 0.47; metric panels use 0.475.
-RS_CARBON_CURVES = 0.47
-RS_CARBON_METRICS = 0.475
+# Carbon fraction of dry biomass (same value in all packages and the README).
+RS_CARBON = 0.475
 NFI_SOIL_FRAC = 0.221
 NFI_CARBON = 0.475
 

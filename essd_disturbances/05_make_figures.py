@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Join trends+severity and write disturbance combined figures (self-contained).
+"""Join trends+severity and write the disturbance figures (Fig. 4–5, SI7–SI11).
 
-Does **not** call ``Figures/Fig_disturbances.py``. Plotting lives in
-``lib/figures/fig_disturbances.py``. No rotation period — those panels stay off.
+Plotting lives in ``lib/figures/fig_disturbances.py``; every input path and
+``year_start`` come from the config. η² is computed only by ``07_compute_variance.py``.
 
 Example::
 
@@ -25,7 +25,8 @@ from lib.config import load_config
 from lib.figures.fig_disturbances import run_figures
 from lib.figures.prepare_table import write_figure_table
 
-_DEFAULT_FIG_DIR = Path("/path/to/Resultat_France/Figures/ESSD")
+_REQUIRED_FOR_FIGURES = ("figure_dir", "ser_shapefile", "france_outline_shapefile",
+                         "kowalski_loss_csv", "kowalski_grid_shp", "year_start")
 
 
 def main() -> None:
@@ -35,7 +36,7 @@ def main() -> None:
         "--figure-dir",
         type=Path,
         default=None,
-        help="PNG output dir (default: config figure_dir or Figures/ESSD)",
+        help="PNG output dir (default: figure_dir in the config)",
     )
     p.add_argument(
         "--prepare-only",
@@ -73,30 +74,28 @@ def main() -> None:
     if args.prepare_only:
         return
 
-    fig_dir = (
-        Path(args.figure_dir).expanduser()
-        if args.figure_dir is not None
-        else Path(cfg.get("figure_dir", _DEFAULT_FIG_DIR)).expanduser()
-    )
+    if args.figure_dir is not None:
+        cfg["figure_dir"] = str(args.figure_dir)
+    missing = [k for k in _REQUIRED_FOR_FIGURES if not cfg.get(k)]
+    if missing:
+        raise SystemExit(f"Set {', '.join(missing)} in {args.config}")
+    fig_dir = Path(cfg["figure_dir"]).expanduser()
 
     if not args.interactive:
         os.environ.setdefault("MPLBACKEND", "Agg")
 
-    ser_shp = cfg.get("ser_shapefile")
-    greco_shp = cfg.get("greco_shapefile")
-    kw = {"interactive": bool(args.interactive)}
-    if ser_shp:
-        kw["ser_shapefile"] = ser_shp
-    if greco_shp:
-        kw["greco_shapefile"] = greco_shp
-    if cfg.get("kowalski_loss_csv"):
-        kw["kowalski_loss_csv"] = cfg["kowalski_loss_csv"]
-    if cfg.get("kowalski_grid_shp"):
-        kw["kowalski_grid_shp"] = cfg["kowalski_grid_shp"]
-
     print(f"Plotting from {table_path}")
     print(f"  figures → {fig_dir}")
-    out = run_figures(table_path, fig_dir, **kw)
+    out = run_figures(
+        table_path,
+        fig_dir,
+        year_start=int(cfg["year_start"]),
+        ser_shapefile=cfg["ser_shapefile"],
+        france_outline_shp=cfg["france_outline_shapefile"],
+        kowalski_loss_csv=cfg["kowalski_loss_csv"],
+        kowalski_grid_shp=cfg["kowalski_grid_shp"],
+        interactive=bool(args.interactive),
+    )
     print(f"Done. Figures in {out}")
 
 

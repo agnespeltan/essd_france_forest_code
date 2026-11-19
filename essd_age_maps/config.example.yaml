@@ -1,5 +1,5 @@
 # Copy to config.yaml and edit paths for your machine.
-# Same folder layout as essd_growth_curves / essd_disturbances / essd_rotation.
+# Same folder layout as essd_growth_curves / essd_disturbances / essd_harvest_age.
 
 data_root: /path/to/Resultat_France
 features_root: /path/to/Resultat_France/Features_30m
@@ -20,7 +20,7 @@ rasters:
   # Latest disturbance year with year ≤ 2021 (built by 00b / auto in 03)
   disturbance_year: latest_disturbance_year_le2021_30m.tif
   # Optional: pin an existing weighted map instead of outputs.weighted
-  # age_weighted: /path/to/.../forest_age_blend_q50.tif
+  # age_weighted: /path/to/.../forest_age_blend_central.tif
 
 # Keep age==0 & AGB==0 when latest disturbance year ∈ this set
 disturbance_keep_years: [2019, 2020, 2021]
@@ -49,8 +49,8 @@ outputs:
   weights_dir: GRECO
   tiles_dir: Age_tiles
   # weighted / fixed default from naming.py if omitted
-  # weighted: forest_age_blend_q50.tif
-  # fixed: forest_age_q50.tif
+  # weighted: forest_age_blend_central.tif
+  # fixed: forest_age_central.tif
 
 # All figure inputs must live here (no hardcoded paths in lib/figures).
 # NFI CSVs are optional (omit → RS/GAMI-only Fig. 3a; SI4/SI5 skipped).
@@ -62,8 +62,8 @@ figures:
   age_main_5km: /path/to/.../age_map_weighted_50_5km_not_corrected_excl_2019_2021.tif
   age_lo_5km: /path/to/.../age_map_weighted_25_5km_not_corrected_excl_2019_2021.tif
   age_hi_5km: /path/to/.../age_map_weighted_75_5km_not_corrected_excl_2019_2021.tif
-  # SI3 extras — CV built by 03b_build_summaries.py (forest_age_q50_cv_5km.tif)
-  # age_cv_5km: /path/to/.../forest_age_q50_cv_5km.tif
+  # SI3 extras — CV built by 03_finalize_age_map.py (forest_age_central_cv_5km.tif)
+  # age_cv_5km: /path/to/.../forest_age_central_cv_5km.tif
   # ours_minus_gami_5km: /path/to/.../ours_minus_gami_5km.tif
   # rel_unc_5km: /path/to/.../age_rel_unc_5km.tif   # else built from age_*_5km
   tree_cover: /path/to/Features_30m/tree_cover_map.tif

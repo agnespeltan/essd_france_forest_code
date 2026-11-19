@@ -1,0 +1,159 @@
+ess,latin,french,stand_type,tfv,melange_label
+2,Quercus pedunculata,Chêne pédonculé,mixture,100,Feuillus
+2,Quercus pedunculata,Chêne pédonculé,pure,1,
+3,Quercus sessiliflora,Chêne sessile,mixture,100,Feuillus
+3,Quercus sessiliflora,Chêne sessile,pure,1,
+4,Quercus rubra,Chêne rouge,mixture,100,Feuillus
+4,Quercus rubra,Chêne rouge,pure,1,
+5,Quercus lanuginosa,Chêne pubescent,mixture,100,Feuillus
+5,Quercus lanuginosa,Chêne pubescent,pure,1,
+6,Quercus ilex,Chêne vert,mixture,100,Feuillus
+6,Quercus ilex,Chêne vert,pure,6,
+7,Quercus toza,Chêne tauzin,mixture,100,Feuillus
+7,Quercus toza,Chêne tauzin,pure,1,
+8,Quercus pseudosuber,Faux Chêne-liège,mixture,100,Feuillus
+8,Quercus pseudosuber,Faux Chêne-liège,pure,6,
+9,Fagus sylvatica,Hêtre,mixture,100,Feuillus
+9,Fagus sylvatica,Hêtre,pure,9,
+10,Castanea sativa,Châtaignier,mixture,100,Feuillus
+10,Castanea sativa,Châtaignier,pure,10,
+11,Carpinus betulus,Charme,mixture,100,Feuillus
+11,Carpinus betulus,Charme,pure,49,
+12,Betula pubescens,Bouleau pubescent,mixture,100,Feuillus
+12,Betula pubescens,Bouleau pubescent,pure,49,
+13,Alnus incana,Aulne blanc,mixture,100,Feuillus
+13,Alnus incana,Aulne blanc,pure,49,
+14,Robinia pseudacacia,Robinier faux acacia,mixture,100,Feuillus
+14,Robinia pseudacacia,Robinier faux acacia,pure,14,
+15,Acer platanoides,Érable plane,mixture,100,Feuillus
+15,Acer platanoides,Érable plane,pure,49,
+16,Celtis australis,Micocoulier,mixture,100,Feuillus
+16,Celtis australis,Micocoulier,pure,49,
+17,Fraxinus excelsior,Frêne commun,mixture,100,Feuillus
+17,Fraxinus excelsior,Frêne commun,pure,49,
+18,Ulmus campestris,Orme champêtre,mixture,100,Feuillus
+18,Ulmus campestris,Orme champêtre,pure,49,
+19,Populus cultivé,Peuplier cultivé,mixture,100,Feuillus
+19,Populus cultivé,Peuplier cultivé,pure,19,
+20,Tilia platyphyllos,Tilleul à grandes feuilles,mixture,100,Feuillus
+20,Tilia platyphyllos,Tilleul à grandes feuilles,pure,49,
+21,Acer campestre,Érable champêtre,mixture,100,Feuillus
+21,Acer campestre,Érable champêtre,pure,49,
+22,Prunus cerasus,Cerisier,mixture,100,Feuillus
+22,Prunus cerasus,Cerisier,pure,49,
+23,Prunus amygdalus,Amandier,mixture,100,Feuillus
+23,Prunus amygdalus,Amandier,pure,49,
+24,Populus tremula,Tremble,mixture,100,Feuillus
+24,Populus tremula,Tremble,pure,19,
+25,Salix alba,Saule blanc,mixture,100,Feuillus
+25,Salix alba,Saule blanc,pure,49,
+26,Platanus acerifolia,Platane à feuilles d’érable,mixture,100,Feuillus
+26,Platanus acerifolia,Platane à feuilles d’érable,pure,49,
+27,Juglans regia,Noyer commun,mixture,100,Feuillus
+27,Juglans regia,Noyer commun,pure,49,
+28,Olea europaea,Olivier d'Europe,mixture,100,Feuillus
+28,Olea europaea,Olivier d'Europe,pure,49,
+29,Feuillu exotique,Autre feuillu exotique,mixture,100,Feuillus
+29,Feuillu exotique,Autre feuillu exotique,pure,49,
+31,Corylus avellana,Noisetier Coudrier,mixture,100,Feuillus
+31,Corylus avellana,Noisetier Coudrier,pure,49,
+32,Ostrya carpinifolia,Charme Houblon,mixture,100,Feuillus
+32,Ostrya carpinifolia,Charme Houblon,pure,49,
+33,Populus (19-2eme generation),Peuplier (19-2eme Génération),mixture,100,Feuillus
+33,Populus (19-2eme generation),Peuplier (19-2eme Génération),pure,19,
+34,Quercus cerris,Chêne chevelu,mixture,100,Feuillus
+34,Quercus cerris,Chêne chevelu,pure,1,
+36,Eucalyptus sp.,Eucalyptus (genre),mixture,100,Feuillus
+36,Eucalyptus sp.,Eucalyptus (genre),pure,49,
+37,Alnus viridis,Aulne vert,mixture,100,Feuillus
+37,Alnus viridis,Aulne vert,pure,49,
+38,Laburnum alpinum,Cytise des Alpes,mixture,100,Feuillus
+38,Laburnum alpinum,Cytise des Alpes,pure,49,
+39,Cornus mas,Cornouiller mâle,mixture,100,Feuillus
+39,Cornus mas,Cornouiller mâle,pure,49,
+40,Arbutus unedo,Arbousier,mixture,100,Feuillus
+40,Arbutus unedo,Arbousier,pure,49,
+41,Sorbus torminalis,Alisier torminal,mixture,100,Feuillus
+41,Sorbus torminalis,Alisier torminal,pure,49,
+42,Liriodendron tulipifera,Tulipier de Virginie,mixture,100,Feuillus
+42,Liriodendron tulipifera,Tulipier de Virginie,pure,49,
+49,AMELANCHIERROTUNDIFOLIA,Amélanchier,mixture,100,Feuillus
+49,AMELANCHIERROTUNDIFOLIA,Amélanchier,pure,49,
+51,Pinus pinaster,Pin maritime,mixture,80,Pin melange
+51,Pinus pinaster,Pin maritime,mixture,200,Coniferes melanges
+51,Pinus pinaster,Pin maritime,pure,51,
+52,Pinus sylvestris,Pin sylvestre,mixture,80,Pin melange
+52,Pinus sylvestris,Pin sylvestre,mixture,200,Coniferes melanges
+52,Pinus sylvestris,Pin sylvestre,pure,52,
+53,Pinus nigra laricio calabrica,Pin laricio de Calabre,mixture,80,Pin melange
+53,Pinus nigra laricio calabrica,Pin laricio de Calabre,mixture,200,Coniferes melanges
+53,Pinus nigra laricio calabrica,Pin laricio de Calabre,pure,53,
+54,Pinus nigricans,Pin noir d’Autriche,mixture,80,Pin melange
+54,Pinus nigricans,Pin noir d’Autriche,mixture,200,Coniferes melanges
+54,Pinus nigricans,Pin noir d’Autriche,pure,53,
+55,Pinus pinea,Pin parasol,mixture,80,Pin melange
+55,Pinus pinea,Pin parasol,mixture,200,Coniferes melanges
+55,Pinus pinea,Pin parasol,pure,81,
+56,Pinus strobus,Pin Weymouth,mixture,80,Pin melange
+56,Pinus strobus,Pin Weymouth,mixture,200,Coniferes melanges
+56,Pinus strobus,Pin Weymouth,pure,81,
+57,Pinus halepensis,Pin d’Alep,mixture,80,Pin melange
+57,Pinus halepensis,Pin d’Alep,mixture,200,Coniferes melanges
+57,Pinus halepensis,Pin d’Alep,pure,57,
+58,Pinus uncinata,Pin à crochets,mixture,80,Pin melange
+58,Pinus uncinata,Pin à crochets,mixture,200,Coniferes melanges
+58,Pinus uncinata,Pin à crochets,pure,58,
+59,Pinus cembra,Pin cembro,mixture,80,Pin melange
+59,Pinus cembra,Pin cembro,mixture,200,Coniferes melanges
+59,Pinus cembra,Pin cembro,pure,58,
+60,Pinus mugo,Pin mugho,mixture,80,Pin melange
+60,Pinus mugo,Pin mugho,mixture,200,Coniferes melanges
+60,Pinus mugo,Pin mugho,pure,81,
+61,Abies alba,SaPin pectiné,mixture,90,Autre conifere
+61,Abies alba,SaPin pectiné,mixture,200,Coniferes melanges
+61,Abies alba,SaPin pectiné,pure,61,
+62,Picea excelsa,Épicéa commun,mixture,90,Autre conifere
+62,Picea excelsa,Épicéa commun,mixture,200,Coniferes melanges
+62,Picea excelsa,Épicéa commun,pure,61,
+63,Larix decidua,Mélèze d’Europe,mixture,90,Autre conifere
+63,Larix decidua,Mélèze d’Europe,mixture,200,Coniferes melanges
+63,Larix decidua,Mélèze d’Europe,pure,63,
+64,Pseudotsuga menziesii,Douglas,mixture,90,Autre conifere
+64,Pseudotsuga menziesii,Douglas,mixture,200,Coniferes melanges
+64,Pseudotsuga menziesii,Douglas,pure,64,
+65,Cedrus atlantica,Cèdre de l’Atlas,mixture,90,Autre conifere
+65,Cedrus atlantica,Cèdre de l’Atlas,mixture,200,Coniferes melanges
+65,Cedrus atlantica,Cèdre de l’Atlas,pure,91,
+66,Cupressus sempervirens,Cyprès de Provence,mixture,90,Autre conifere
+66,Cupressus sempervirens,Cyprès de Provence,mixture,200,Coniferes melanges
+66,Cupressus sempervirens,Cyprès de Provence,pure,91,
+67,Taxus baccata,If,mixture,90,Autre conifere
+67,Taxus baccata,If,mixture,200,Coniferes melanges
+67,Taxus baccata,If,pure,91,
+68,Cupressus arizonica,Cyprès de l’Arizona,mixture,90,Autre conifere
+68,Cupressus arizonica,Cyprès de l’Arizona,mixture,200,Coniferes melanges
+68,Cupressus arizonica,Cyprès de l’Arizona,pure,91,
+69,Juniperus thurifera,Genévrier thurifère,mixture,90,Autre conifere
+69,Juniperus thurifera,Genévrier thurifère,mixture,200,Coniferes melanges
+69,Juniperus thurifera,Genévrier thurifère,pure,91,
+70,Abies bornmulleriana,SaPin De Turquie,mixture,90,Autre conifere
+70,Abies bornmulleriana,SaPin De Turquie,mixture,200,Coniferes melanges
+70,Abies bornmulleriana,SaPin De Turquie,pure,61,
+71,Abies nordmanniana,SaPin de Nordmann,mixture,90,Autre conifere
+71,Abies nordmanniana,SaPin de Nordmann,mixture,200,Coniferes melanges
+71,Abies nordmanniana,SaPin de Nordmann,pure,61,
+72,Abies procera,SaPin noble,mixture,90,Autre conifere
+72,Abies procera,SaPin noble,mixture,200,Coniferes melanges
+72,Abies procera,SaPin noble,pure,61,
+73,Picea sitchensis,Épicéa de Sitka,mixture,90,Autre conifere
+73,Picea sitchensis,Épicéa de Sitka,mixture,200,Coniferes melanges
+73,Picea sitchensis,Épicéa de Sitka,pure,61,
+74,Larix eurolepis,Mélèze hybride,mixture,90,Autre conifere
+74,Larix eurolepis,Mélèze hybride,mixture,200,Coniferes melanges
+74,Larix eurolepis,Mélèze hybride,pure,63,
+76,Cedrus libani,Cèdre du Liban,mixture,90,Autre conifere
+76,Cedrus libani,Cèdre du Liban,mixture,200,Coniferes melanges
+76,Cedrus libani,Cèdre du Liban,pure,91,
+77,Pinus taeda,Pin à encens et hybrides,mixture,80,Pin melange
+77,Pinus taeda,Pin à encens et hybrides,mixture,200,Coniferes melanges
+77,Pinus taeda,Pin à encens et hybrides,pure,81,

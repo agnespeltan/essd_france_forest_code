@@ -9,12 +9,12 @@ import numpy as np
 import pandas as pd
 
 from lib.config import output_path
+from lib.levels import PATCH_PIXEL_AREA_HA, _fitted_or_fallback
 from lib.figures.prepare_table import build_figure_table, _norm_agent
 from lib.variance.eta2 import eta2_arrays, eta2_equal, perm_p_eta2, summarize_factor_row
+from lib.variance.twoway import recentred_ci
 
 CARBON_FRACTION = 0.475
-PATCH_PIXEL_AREA_HA = 0.09
-YEAR_REF = 2020
 
 TFV_GROUP_ORDER = [
     "Pure deciduous",
@@ -59,44 +59,7 @@ DICT_GROUP_TFVS = {
 AGBD_LOSS = "agbd_lost_conservative"
 REL_AGBD_LOSS = "relative_agbd_lost_conservative"
 RATE_X_SEV = "rate_x_severity"
-ROTATION = "rotation_period"
-
-
-def _as_float(series: pd.Series) -> np.ndarray:
-    return pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
-
-
-def _fitted_or_fallback(
-    trend,
-    intercept,
-    slope,
-    intercept_se,
-    slope_se,
-    median,
-    median_se,
-    *,
-    year_start: int,
-    invalid_below: float,
-    fallback_floor: float,
-):
-    dt = float(YEAR_REF - year_start)
-    keep = trend.astype(str).to_numpy() != "no trend"
-    a = _as_float(intercept)
-    b = _as_float(slope)
-    sa = _as_float(intercept_se)
-    sb = np.maximum(_as_float(slope_se), 0.0)
-    med = _as_float(median)
-    sm = np.maximum(_as_float(median_se), 0.0)
-    fitted = a + b * dt
-    fitted_se = np.sqrt(sa**2 + (sb * dt) ** 2)
-    keep = keep & np.isfinite(fitted) & (fitted >= invalid_below)
-    fallback = np.where(np.isfinite(med), med, fallback_floor)
-    fallback = np.maximum(fallback, fallback_floor)
-    level = np.where(keep, fitted, fallback)
-    level_se = np.maximum(np.where(keep, fitted_se, sm), 0.0)
-    slope_hat = np.where(keep, b, 0.0)
-    cov = np.where(keep, dt * sb**2, 0.0)
-    return level, level_se, slope_hat, sb, cov
+HARVEST_AGE = "mean_harvest_age"
 
 
 def _row_ratio_pct(slope, level):
@@ -145,8 +108,8 @@ def add_row_metrics(df: pd.DataFrame, *, year_start: int) -> pd.DataFrame:
         out["slope_disturbance_rate"],
         out["intercept_std_disturbance_rate"],
         out["slope_std_disturbance_rate"],
-        out["median_disturbance_rate"],
-        out["median_std_disturbance_rate"],
+        out["mean_disturbance_rate"],
+        out["mean_std_disturbance_rate"],
         year_start=year_start,
         invalid_below=0.0,
         fallback_floor=0.0,
@@ -173,7 +136,7 @@ def add_row_metrics(df: pd.DataFrame, *, year_start: int) -> pd.DataFrame:
         out["slope_mean_patch_size"],
         out["intercept_std_mean_patch_size"],
         out["slope_std_mean_patch_size"],
-        out["median_mean_patch_size"],
+        out["median_mean_patch_size"],  # patch level: median (quiet years excluded)
         out["median_std_mean_patch_size"],
         year_start=year_start,
         invalid_below=1.0,
@@ -218,7 +181,7 @@ def add_row_metrics(df: pd.DataFrame, *, year_start: int) -> pd.DataFrame:
     return out
 
 
-def _load_joined(cfg: dict[str, Any], *, rotation_csv: Path | None) -> pd.DataFrame:
+def _load_joined(cfg: dict[str, Any], *, harvest_age_csv: Path | None) -> pd.DataFrame:
     trends_path = Path(cfg.get("trends_csv") or output_path(cfg, "trends")).expanduser()
     sev_path = Path(cfg.get("severity_csv") or output_path(cfg, "severity")).expanduser()
     if not trends_path.is_file():
@@ -239,17 +202,28 @@ def _load_joined(cfg: dict[str, Any], *, rotation_csv: Path | None) -> pd.DataFr
     table = table.merge(trends_gap, on=["TFV", "ser", "agent"], how="left")
     table["gap_filled_severity"] = pd.to_numeric(table.get("gap_filled"), errors="coerce")
 
-    if rotation_csv is not None:
-        rot_path = Path(rotation_csv).expanduser()
+    if harvest_age_csv is not None:
+        rot_path = Path(harvest_age_csv).expanduser()
         if not rot_path.is_file():
-            raise FileNotFoundError(f"Rotation CSV not found: {rot_path}")
+            raise FileNotFoundError(f"Mean harvest age CSV not found: {rot_path}")
         rot = pd.read_csv(rot_path)
+        # Back-compat: tables written before the rotation → mean harvest age rename.
+        rot = rot.rename(columns={
+            "rotation_period": "mean_harvest_age",
+            "rotation_period_err": "mean_harvest_age_err",
+            "rotation_gap_filled": "harvest_age_gap_filled",
+        })
         rot["agent"] = _norm_agent(rot["agent"])
         rot["TFV"] = rot["TFV"].astype(str)
         rot["ser"] = pd.to_numeric(rot["ser"], errors="coerce").astype("Int64")
-        cols = ["TFV", "ser", "agent", ROTATION, "rotation_period_err", "gap_filled"]
+        gap_src = (
+            "harvest_age_gap_filled"
+            if "harvest_age_gap_filled" in rot.columns
+            else "gap_filled"
+        )
+        cols = ["TFV", "ser", "agent", HARVEST_AGE, "mean_harvest_age_err", gap_src]
         cols = [c for c in cols if c in rot.columns]
-        rot = rot[cols].rename(columns={"gap_filled": "gap_filled_rotation"})
+        rot = rot[cols].rename(columns={gap_src: "gap_filled_harvest_age"})
         table = table.merge(rot, on=["TFV", "ser", "agent"], how="left")
 
     return table
@@ -258,10 +232,10 @@ def _load_joined(cfg: dict[str, Any], *, rotation_csv: Path | None) -> pd.DataFr
 def prepare_analysis_frame(
     cfg: dict[str, Any],
     *,
-    rotation_csv: Path | None = None,
+    harvest_age_csv: Path | None = None,
 ) -> pd.DataFrame:
     """SER×TFV×agent cells with derived metrics (gap fills still present for masking)."""
-    df = _load_joined(cfg, rotation_csv=rotation_csv)
+    df = _load_joined(cfg, harvest_age_csv=harvest_age_csv)
     year_start = int(cfg.get("year_start", 1999))
     df = add_row_metrics(df, year_start=year_start)
 
@@ -297,7 +271,7 @@ def _param_spec(df: pd.DataFrame) -> list[tuple[str, str, bool, str, str]]:
         (AGBD_LOSS, "Abs. severity", True, f"{AGBD_LOSS}_error", "gap_filled_severity"),
         (REL_AGBD_LOSS, "Rel. severity", True, f"{REL_AGBD_LOSS}_error", "gap_filled_severity"),
         (RATE_X_SEV, "AGB intensity", True, f"{RATE_X_SEV}_error", "gap_filled_severity"),
-        (ROTATION, "Rotation", False, "rotation_period_err", "gap_filled_rotation"),
+        (HARVEST_AGE, "Mean harvest age", False, "mean_harvest_age_err", "gap_filled_harvest_age"),
     ]
     out = []
     for col, lab, agent_ok, se, gap in specs:
@@ -321,7 +295,7 @@ def _mask_local(df: pd.DataFrame, gap_col: str) -> pd.DataFrame:
 def compute_disturbance_eta2(
     cfg: dict[str, Any],
     *,
-    rotation_csv: Path | str | None = None,
+    harvest_age_csv: Path | str | None = None,
     n_mc: int = 1000,
     n_perm: int = 1000,
     seed: int = 0,
@@ -330,15 +304,17 @@ def compute_disturbance_eta2(
     One-way η² for species (TFV), region (SER), and agent.
 
     Equal weight per SER×TFV×agent cell. Gap-filled rows excluded per metric source.
-    Rotation: harvest only; agent factor skipped. MC CI from row SEs; permutation p.
+    Mean harvest age: harvest only; agent factor skipped. MC CI from row SEs; permutation p.
     """
-    rot = Path(rotation_csv).expanduser() if rotation_csv else None
+    rot = Path(harvest_age_csv).expanduser() if harvest_age_csv else None
     if rot is None:
-        cand = Path(cfg["output_dir"]).expanduser() / "disturbance_trends_with_rotation.csv"
-        if cand.is_file():
-            rot = cand
+        out_dir = Path(cfg["output_dir"]).expanduser()
+        for name in ("disturbance_trends_with_harvest_age.csv", "disturbance_trends_with_rotation.csv"):
+            if (out_dir / name).is_file():
+                rot = out_dir / name
+                break
 
-    base = prepare_analysis_frame(cfg, rotation_csv=rot)
+    base = prepare_analysis_frame(cfg, harvest_age_csv=rot)
     specs = _param_spec(base)
     if not specs:
         raise RuntimeError("No variance metrics found in joined disturbance table")
@@ -352,7 +328,7 @@ def compute_disturbance_eta2(
 
     for col, lab, agent_ok, se_col, gap_col in specs:
         work = _mask_local(base, gap_col)
-        if col == ROTATION:
+        if col == HARVEST_AGE:
             work = work.loc[work["agent"].eq("harvest")].copy()
         work = work.loc[np.isfinite(pd.to_numeric(work[col], errors="coerce"))].copy()
         if work.empty:
@@ -391,7 +367,7 @@ def compute_disturbance_eta2(
                 "mean_patch_size_2020",
                 AGBD_LOSS,
                 RATE_X_SEV,
-                ROTATION,
+                HARVEST_AGE,
             }:
                 yp = np.maximum(yp, 0.0)
             if col == REL_AGBD_LOSS:
@@ -407,24 +383,13 @@ def compute_disturbance_eta2(
                 if np.isfinite(ea):
                     agent_d.append(100.0 * ea)
 
+        # Spread of the MC draws, centred on the point estimate (see recentred_ci).
         ci = {
-            "ser": (
-                (float(np.percentile(ser_d, 2.5)), float(np.percentile(ser_d, 97.5)))
-                if len(ser_d) >= 10
-                else (np.nan, np.nan)
-            ),
-            "tfv": (
-                (float(np.percentile(tfv_d, 2.5)), float(np.percentile(tfv_d, 97.5)))
-                if len(tfv_d) >= 10
-                else (np.nan, np.nan)
-            ),
+            "ser": recentred_ci(point["ser"], ser_d, lo_bound=0.0, hi_bound=100.0),
+            "tfv": recentred_ci(point["tfv"], tfv_d, lo_bound=0.0, hi_bound=100.0),
         }
         if agent_ok:
-            ci["agent"] = (
-                (float(np.percentile(agent_d, 2.5)), float(np.percentile(agent_d, 97.5)))
-                if len(agent_d) >= 10
-                else (np.nan, np.nan)
-            )
+            ci["agent"] = recentred_ci(point["agent"], agent_d, lo_bound=0.0, hi_bound=100.0)
 
         mc_ser_draws.append(ser_d)
         mc_tfv_draws.append(tfv_d)
@@ -447,23 +412,22 @@ def compute_disturbance_eta2(
     if table.empty:
         raise RuntimeError("Variance table empty after filtering")
 
-    def _mean_ci_aligned(draw_lists: list[list[float]]) -> tuple[float, float]:
+    def _mean_ci_aligned(point: float, draw_lists: list[list[float]]) -> tuple[float, float]:
         if not draw_lists:
             return float("nan"), float("nan")
         n = min(len(d) for d in draw_lists)
         if n < 10:
             return float("nan"), float("nan")
         means = [float(np.mean([d[i] for d in draw_lists])) for i in range(n)]
-        lo, hi = np.percentile(means, [2.5, 97.5])
-        return float(lo), float(hi)
+        return recentred_ci(point, means, lo_bound=0.0, hi_bound=100.0)
 
     avg_s = float(table["eta2_ser_pct"].mean())
     avg_t = float(table["eta2_tfv_pct"].mean())
     agent_rows = table.loc[table["agent_factor"]]
     avg_a = float(agent_rows["eta2_agent_pct"].mean()) if not agent_rows.empty else float("nan")
-    s_lo, s_hi = _mean_ci_aligned(mc_ser_draws)
-    t_lo, t_hi = _mean_ci_aligned(mc_tfv_draws)
-    a_lo, a_hi = _mean_ci_aligned(mc_agent_draws)
+    s_lo, s_hi = _mean_ci_aligned(avg_s, mc_ser_draws)
+    t_lo, t_hi = _mean_ci_aligned(avg_t, mc_tfv_draws)
+    a_lo, a_hi = _mean_ci_aligned(avg_a, mc_agent_draws)
 
     summary = {
         "n_metrics": int(len(table)),
@@ -479,7 +443,7 @@ def compute_disturbance_eta2(
         "avg_eta2_agent_pct": avg_a,
         "avg_eta2_agent_lo": a_lo,
         "avg_eta2_agent_hi": a_hi,
-        "rotation_csv": str(rot) if rot else None,
+        "harvest_age_csv": str(rot) if rot else None,
     }
     return table, summary
 
@@ -528,5 +492,58 @@ def format_eta2_summary(table: pd.DataFrame, summary: dict[str, Any]) -> str:
         who.append(("agent", summary["avg_eta2_agent_pct"]))
     who.sort(key=lambda x: -x[1] if np.isfinite(x[1]) else -np.inf)
     lines.append("→ mean η² ranking: " + " > ".join(f"{k} ({v:.1f}%)" for k, v in who))
-    lines.append("Rotation: harvest only; agent η² skipped. Gap-filled values excluded.")
+    lines.append("Mean harvest age: harvest only; agent η² skipped. Gap-filled values excluded.")
     return "\n".join(lines)
+
+
+_CLIP_NONNEG = {"d_area_2020_perc", "mean_patch_size_2020", AGBD_LOSS, RATE_X_SEV, HARVEST_AGE}
+
+
+def compute_disturbance_eta2_twoway(
+    cfg: dict[str, Any],
+    *,
+    harvest_age_csv: Path | str | None = None,
+    n_mc: int = 1000,
+    seed: int = 0,
+) -> pd.DataFrame:
+    """Two-way partition species (TFV) vs region (SER), agent as covariate.
+
+    Same cells, masks, equal weights and MC draws (row SEs, same clipping) as
+    :func:`compute_disturbance_eta2`. Parts are % of the variance left after agent
+    (mean harvest age: harvest only, no agent). See ``lib/variance/twoway.py``.
+    """
+    from lib.variance.twoway import TwoWay, partition_with_ci
+
+    rot = Path(harvest_age_csv).expanduser() if harvest_age_csv else None
+    if rot is None:
+        out_dir = Path(cfg["output_dir"]).expanduser()
+        for name in ("disturbance_trends_with_harvest_age.csv", "disturbance_trends_with_rotation.csv"):
+            if (out_dir / name).is_file():
+                rot = out_dir / name
+                break
+    base = prepare_analysis_frame(cfg, harvest_age_csv=rot)
+    rng = np.random.default_rng(seed)
+    rows = []
+    for col, lab, agent_ok, se_col, gap_col in _param_spec(base):
+        work = _mask_local(base, gap_col)
+        if col == HARVEST_AGE:
+            work = work.loc[work["agent"].eq("harvest")].copy()
+        work = work.loc[np.isfinite(pd.to_numeric(work[col], errors="coerce"))].copy()
+        if work.empty:
+            continue
+        y = pd.to_numeric(work[col], errors="coerce").to_numpy(dtype=float)
+        se = (np.maximum(pd.to_numeric(work[se_col], errors="coerce").fillna(0.0).to_numpy(float), 0.0)
+              if se_col and se_col in work.columns else np.zeros(len(work)))
+        draws = []
+        for _ in range(n_mc):
+            yp = y + rng.normal(0.0, se)
+            if col in _CLIP_NONNEG:
+                yp = np.maximum(yp, 0.0)
+            if col == REL_AGBD_LOSS:
+                yp = np.clip(yp, 0.0, 100.0)
+            draws.append(yp)
+        tw = TwoWay(work["TFV"].to_numpy(), work["ser"].to_numpy(),
+                    work["agent"].to_numpy() if agent_ok else None)
+        res = partition_with_ci(tw, y, draws)
+        rows.append({"parameter": lab, "column": col, "agent_covariate": agent_ok, **res})
+    return pd.DataFrame(rows)

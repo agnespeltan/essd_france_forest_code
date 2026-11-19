@@ -4,6 +4,8 @@
 output_dir: /path/to/Resultat_France/Data_clean
 # IGN SER polygons (codeser A11 → numeric 111, or ser_num / square_id)
 ser_shapefile: /path/to/IGN_donnees/France_ser.shp
+# France outline for maps (Fig. 4–5, SI11)
+france_outline_shapefile: /path/to/IGN_donnees/France_1km.shp
 
 # 30 m rasters (must share grid with AGB)
 rasters:
@@ -27,16 +29,17 @@ workers: 4
 outputs:
   patches: disturbance_patches.parquet
   agb_stats: disturbance_agb_stats.parquet
+  forest_area: forest_tfv_ser_area.parquet
   trends: disturbance_trends.csv
   severity: disturbance_severity.csv
   figure_table: disturbance_trends_for_figures.csv
 
-# Combined PNGs from 05_make_figures.py (no rotation panels)
-# figure_dir: /path/to/Resultat_France/Figures/ESSD
+# Required by 05_make_figures.py (Fig. 4–5, SI7–SI11)
+figure_dir: /path/to/Resultat_France/Figures/ESSD
 
 # Kowalski / Planet severity for SI11 (Europe 10 km grid; clipped to France)
-# kowalski_loss_csv: /path/to/Severity_Katja/planet_agbd_loss_10km.csv
-# kowalski_grid_shp: /path/to/Severity_Katja/grid_10km_3035.shp
+kowalski_loss_csv: /path/to/Severity_Katja/planet_agbd_loss_10km.csv
+kowalski_grid_shp: /path/to/Severity_Katja/grid_10km_3035.shp
 
 # Optional overrides if reusing existing parquets without rebuilding:
 # patches_parquet: /path/to/disturbance_patches.parquet
@@ -46,8 +49,8 @@ outputs:
 # Trend window (inclusive)
 year_start: 1999
 year_end: 2024
+# MK kept only when n_years_positive >= this (mean always computed)
 min_years_ser: 10
-min_years_mk: 4
 
 # AGB severity windows (inclusive). later years = pre-disturbance reference.
 before_range: "2021-2024"

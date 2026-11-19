@@ -27,7 +27,7 @@ from lib.figures.constants import (
     GRECO_LETTER_COLORS,
     GRECO_LETTERS,
     REGIONAL_PANELS,
-    RS_CARBON_CURVES,
+    RS_CARBON,
     RS_ENV_HI_Q,
     RS_ENV_LO_Q,
     RS_MAIN_Q,
@@ -43,7 +43,6 @@ from lib.figures.cr import (
     fit_cr3,
     param_d,
     t50_from_abcd,
-    weighted_quantiles,
 )
 from lib.figures.data import (
     load_area_tfv_greco,
@@ -87,7 +86,7 @@ def _plot_all_greco_fitted_curves(ax, ddf, tfv, y_label_cap=150):
         )
         if not np.all(np.isfinite(params_c)):
             continue
-        biomass_c = chapman_richards(AGES, *params_c) * RS_CARBON_CURVES
+        biomass_c = chapman_richards(AGES, *params_c) * RS_CARBON
         color = GRECO_LETTER_COLORS.get(greco, "gray")
         params_lo = (
             row.get(f"a_{RS_ENV_LO_Q}"),
@@ -102,11 +101,11 @@ def _plot_all_greco_fitted_curves(ax, ddf, tfv, y_label_cap=150):
             param_d(row, RS_ENV_HI_Q),
         )
         if np.all(np.isfinite(params_lo)) and np.all(np.isfinite(params_hi)):
-            lo = chapman_richards(AGES, *params_lo) * RS_CARBON_CURVES
-            hi = chapman_richards(AGES, *params_hi) * RS_CARBON_CURVES
+            lo = chapman_richards(AGES, *params_lo) * RS_CARBON
+            hi = chapman_richards(AGES, *params_hi) * RS_CARBON
             ax.fill_between(AGES, np.minimum(lo, hi), np.maximum(lo, hi), color=color, alpha=0.1, linewidth=0, zorder=1)
         ax.plot(AGES, biomass_c, color=color, linewidth=1.0, zorder=2)
-        end_y = float(chapman_richards(end_x, *params_c) * RS_CARBON_CURVES)
+        end_y = float(chapman_richards(end_x, *params_c) * RS_CARBON)
         if np.isfinite(end_y):
             end_points.append((end_y, greco, params_c))
     end_points.sort(reverse=True)
@@ -114,13 +113,13 @@ def _plot_all_greco_fitted_curves(ax, ddf, tfv, y_label_cap=150):
         x_offset = [0, 5, 10][i % 3]
         if end_y > y_label_cap:
             x_vals = np.linspace(0, 150, 1501)
-            y_vals = chapman_richards(x_vals, *params) * RS_CARBON_CURVES
+            y_vals = chapman_richards(x_vals, *params) * RS_CARBON
             idx = np.where(y_vals >= y_label_cap)[0]
             label_x = x_vals[idx[0]] if len(idx) else end_x - x_offset
             label_y = y_label_cap
         else:
             label_x = end_x - x_offset
-            label_y = float(chapman_richards(label_x, *params) * RS_CARBON_CURVES)
+            label_y = float(chapman_richards(label_x, *params) * RS_CARBON)
         ax.text(label_x, label_y, greco, color="black", fontsize=7, va="center", ha="right", fontweight="bold", zorder=6)
 
 
@@ -254,7 +253,6 @@ def plot_figure2(ctx: dict[str, Any], fig_dir: Path) -> Path:
     dfi = ctx["dfi_species"]
     nfi_g = ctx["nfi_greco_series"]
     gdf = ctx["greco_gdf"]
-    area = ctx["area"]
     gc_met = ctx["gc_met_tfv"]
 
     fig = plt.figure(figsize=(15.8, 7.8))
@@ -327,7 +325,7 @@ def plot_figure2(ctx: dict[str, Any], fig_dir: Path) -> Path:
                     row[f"b_{RS_MAIN_Q}"],
                     row[f"c_{RS_MAIN_Q}"],
                     param_d(row, RS_MAIN_Q),
-                ) * RS_CARBON_CURVES
+                ) * RS_CARBON
                 ax.plot(AGES, y, color=color, linewidth=1.0, alpha=0.3)
         if has_nfi_greco:
             for greco in [g for g, grp in GRECO_GROUPS.items() if grp == region]:
@@ -470,7 +468,7 @@ def plot_figure2(ctx: dict[str, Any], fig_dir: Path) -> Path:
 def plot_figure_si1(ctx: dict[str, Any], fig_dir: Path) -> Path:
     ddf = ctx["ddf"].copy()
     area = ctx["area"]
-    ddf["agb_max"] = pd.to_numeric(ddf[f"a_{RS_MAIN_Q}"], errors="coerce") * RS_CARBON_CURVES
+    ddf["agb_max"] = pd.to_numeric(ddf[f"a_{RS_MAIN_Q}"], errors="coerce") * RS_CARBON
     ddf["t50"] = ddf.apply(
         lambda r: t50_from_abcd(
             r[f"a_{RS_MAIN_Q}"],
@@ -488,7 +486,7 @@ def plot_figure_si1(ctx: dict[str, Any], fig_dir: Path) -> Path:
             r[f"c_{RS_MAIN_Q}"],
             param_d(r, RS_MAIN_Q),
         )
-        * RS_CARBON_CURVES
+        * RS_CARBON
         / 30.0,
         axis=1,
     )

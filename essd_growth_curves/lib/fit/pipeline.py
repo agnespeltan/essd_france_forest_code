@@ -9,7 +9,7 @@ import pandas as pd
 
 from lib.config import excluded_tfv_set
 from lib.constants import FIT_QUANTILES, TARGET_COLUMN_PREFIX
-from lib.fit.chapman_richards import fit_quantiles, results_to_row
+from lib.fit.chapman_richards import b_min_setting, fit_quantiles, results_to_row, trim_settings
 from lib.fit.fill_missing import add_gap_filled_rows, drop_poor_fits
 from lib.fit.preprocess import filter_tfv_greco, load_merged_stats
 from lib.paths import curves_path, output_dir
@@ -21,12 +21,14 @@ def _fit_one_pair(
     target: str,
     tfv: str,
     greco: Any,
+    trim: dict[str, Any] | None = None,
+    b_min: float | None = None,
 ) -> pd.DataFrame:
     filtered = filter_tfv_greco(df, target, tfv, greco)
     if filtered.empty or int(filtered["total_age_points"].iloc[0]) < 3:
         return pd.DataFrame()
     try:
-        fitted = fit_quantiles(filtered, target, FIT_QUANTILES)
+        fitted = fit_quantiles(filtered, target, FIT_QUANTILES, trim=trim, b_min=b_min)
     except Exception as exc:  # noqa: BLE001 - keep pool alive on hard fit failures
         print(f"Fit failed for TFV={tfv} GRECO={greco}: {exc}")
         return pd.DataFrame()
@@ -65,15 +67,17 @@ def fit_target(cfg: dict[str, Any], df: pd.DataFrame, target_key: str) -> pd.Dat
     excluded = excluded_tfv_set(cfg)
     pairs = _unique_tfv_greco_pairs(df, excluded)
     workers = int(cfg.get("workers", 4))
+    trim = trim_settings(cfg)
+    b_min = b_min_setting(cfg)
     print(
         f"Fitting {target_key} ({target}): {len(pairs)} TFV×GRECO pairs, "
-        f"workers={workers} [shared b,c; unweighted; monotone a]"
+        f"workers={workers} [shared b,c; unweighted; monotone a; tail trim {trim}; b_min {b_min}]"
     )
 
     frames: list[pd.DataFrame] = []
     if workers <= 1:
         for i, (tfv, greco) in enumerate(pairs, start=1):
-            row = _fit_one_pair(df, target, tfv, greco)
+            row = _fit_one_pair(df, target, tfv, greco, trim, b_min)
             if not row.empty:
                 frames.append(row)
             if i % 10 == 0 or i == len(pairs):
@@ -81,7 +85,7 @@ def fit_target(cfg: dict[str, Any], df: pd.DataFrame, target_key: str) -> pd.Dat
     else:
         with ProcessPoolExecutor(max_workers=workers) as executor:
             futures = {
-                executor.submit(_fit_one_pair, df, target, tfv, greco): (tfv, greco)
+                executor.submit(_fit_one_pair, df, target, tfv, greco, trim, b_min): (tfv, greco)
                 for tfv, greco in pairs
             }
             done = 0

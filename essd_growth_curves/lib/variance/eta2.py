@@ -1,8 +1,13 @@
 """Equal-weight one-way η² for growth-curve metrics (AGBmax, R30, t50).
 
 Matches manuscript methods: equal weight per TFV×GRECO; gap-filled excluded;
-MC 95% CI by perturbing each value within its 25th–75th percentile range;
-label-permutation p-values.
+MC 95% CI: by default each value is drawn from Normal(value, bootstrap fit SE)
+(``07_bootstrap_curves.py`` columns ``AGBmax_se_fit`` / ``R30_se_fit`` / ``t50_se_fit``);
+``mc="envelope"`` keeps the former uniform draw within the 25th–75th percentile
+curves (between-stand spread; zero width for t50 since b, c are shared).
+The CI uses the spread of the MC draws centred on the point estimate
+(``recentred_ci``): adding noise to already-noisy values pulls η² down.
+Label-permutation p-values.
 """
 
 from __future__ import annotations
@@ -12,12 +17,15 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from lib.figures.constants import RS_CARBON_CURVES, RS_ENV_HI_Q, RS_ENV_LO_Q, RS_MAIN_Q, TFV_GROUP
+from lib.figures.constants import RS_CARBON, RS_ENV_HI_Q, RS_ENV_LO_Q, RS_MAIN_Q, TFV_GROUP
 from lib.figures.cr import chapman_richards, param_d, t50_from_abcd
 from lib.figures.data import load_rs_curves
+from lib.variance.twoway import recentred_ci
 
 
 METRICS = ("agb_max", "r30", "t50")
+# metric -> (bootstrap SE column in the curves CSV, in carbon units?)
+SE_COLUMNS = {"agb_max": ("AGBmax_se_fit", True), "r30": ("R30_se_fit", True), "t50": ("t50_se_fit", False)}
 METRIC_LABELS = {
     "agb_max": "AGBmax",
     "r30": "R30",
@@ -101,7 +109,7 @@ def build_metric_table(
     carbon: float | None = None,
 ) -> pd.DataFrame:
     """One row per TFV×GRECO with point metrics and 25/75 envelopes for MC."""
-    carbon = float(carbon if carbon is not None else RS_CARBON_CURVES)
+    carbon = float(carbon if carbon is not None else RS_CARBON)
     ddf = load_rs_curves(cfg, include_gap_filled=include_gap_filled)
     ddf = ddf.loc[ddf["TFV"].map(lambda t: TFV_GROUP.get(float(t)) not in (None, "Other", "Forest"))].copy()
 
@@ -136,6 +144,9 @@ def build_metric_table(
             rec[m] = mid[m]
             rec[f"{m}_lo"] = min(lo[m], hi[m])
             rec[f"{m}_hi"] = max(lo[m], hi[m])
+            col, in_carbon = SE_COLUMNS[m]
+            se = float(r[col]) if col in r.index else np.nan
+            rec[f"{m}_se"] = se * carbon if in_carbon else se
         rows.append(rec)
     return pd.DataFrame(rows)
 
@@ -148,6 +159,7 @@ def compute_eta2_table(
     n_perm: int = 1000,
     seed: int = 0,
     n_boot: int | None = None,  # backwards-compatible alias → n_mc
+    mc: str = "bootstrap",
 ) -> pd.DataFrame:
     """Equal-weight one-way η² (%) for species (TFV) and region (GRECO)."""
     if n_boot is not None:
@@ -155,6 +167,11 @@ def compute_eta2_table(
     df = build_metric_table(cfg, include_gap_filled=include_gap_filled)
     if df.empty:
         raise RuntimeError("No TFV×GRECO growth curves for η² (check gap-fill filter / paths)")
+    if mc not in ("bootstrap", "envelope"):
+        raise ValueError(f"mc must be 'bootstrap' or 'envelope', got {mc!r}")
+    if mc == "bootstrap" and not all(np.isfinite(df[f"{m}_se"]).any() for m in METRICS):
+        raise RuntimeError("No bootstrap SE columns in the curves CSV: run 07_bootstrap_curves.py --merge "
+                           "or use mc='envelope'")
 
     rng_mc = np.random.default_rng(seed)
     rng_perm = np.random.default_rng(seed + 42)
@@ -172,6 +189,8 @@ def compute_eta2_table(
         hi = np.where(np.isfinite(hi), hi, y)
         half = 0.5 * (hi - lo)
         half = np.where(np.isfinite(half) & (half >= 0), half, 0.0)
+        se = df[f"{metric}_se"].to_numpy(dtype=float)
+        se = np.where(np.isfinite(se) & (se >= 0), se, 0.0)
 
         sp = 100.0 * eta2_equal(df, metric, "TFV")
         rg = 100.0 * eta2_equal(df, metric, "greco")
@@ -179,8 +198,11 @@ def compute_eta2_table(
         sp_draws, rg_draws = [], []
         for _ in range(n_mc):
             # Uniform within [25th, 75th] metric range (centred on midpoint of envelope)
-            u = rng_mc.uniform(-1.0, 1.0, size=len(y))
-            yp = y + u * half
+            if mc == "bootstrap":
+                yp = y + rng_mc.standard_normal(len(y)) * se
+            else:
+                u = rng_mc.uniform(-1.0, 1.0, size=len(y))
+                yp = y + u * half
             yp = np.maximum(yp, 0.0) if metric != "t50" else yp
             es = eta2_arrays(yp, w, g_tfv)
             er = eta2_arrays(yp, w, g_reg)
@@ -189,16 +211,8 @@ def compute_eta2_table(
             if np.isfinite(er):
                 rg_draws.append(100.0 * er)
 
-        sp_lo, sp_hi = (
-            (float(np.percentile(sp_draws, 2.5)), float(np.percentile(sp_draws, 97.5)))
-            if len(sp_draws) >= 10
-            else (np.nan, np.nan)
-        )
-        rg_lo, rg_hi = (
-            (float(np.percentile(rg_draws, 2.5)), float(np.percentile(rg_draws, 97.5)))
-            if len(rg_draws) >= 10
-            else (np.nan, np.nan)
-        )
+        sp_lo, sp_hi = recentred_ci(sp, sp_draws, lo_bound=0.0, hi_bound=100.0)
+        rg_lo, rg_hi = recentred_ci(rg, rg_draws, lo_bound=0.0, hi_bound=100.0)
 
         rows.append(
             {
@@ -217,6 +231,7 @@ def compute_eta2_table(
                 "n_pairs": int(len(df)),
                 "include_gap_filled": bool(include_gap_filled),
                 "equal_weight": True,
+                "mc": mc,
             }
         )
     return pd.DataFrame(rows)
@@ -259,3 +274,37 @@ def format_eta2_paragraph(table: pd.DataFrame) -> str:
         f"R30 ({_pm(by['r30'], 'species')} vs. {_pm(by['r30'], 'region')}); "
         f"and t50 ({_pm(by['t50'], 'species')} vs. {_pm(by['t50'], 'region')})."
     )
+
+
+def compute_eta2_twoway(
+    cfg: dict[str, Any],
+    *,
+    include_gap_filled: bool = False,
+    n_mc: int = 1000,
+    seed: int = 0,
+    mc: str = "bootstrap",
+) -> pd.DataFrame:
+    """Two-way partition species (TFV) vs region (GRECO): unique / shared / residual (%).
+
+    Same cells, equal weights and MC draws as :func:`compute_eta2_table`
+    (bootstrap SE by default); see ``lib/variance/twoway.py``.
+    """
+    from lib.variance.twoway import TwoWay, partition_with_ci
+
+    df = build_metric_table(cfg, include_gap_filled=include_gap_filled)
+    rng = np.random.default_rng(seed)
+    rows = []
+    for metric in METRICS:
+        work = df.loc[np.isfinite(df[metric].to_numpy(dtype=float))]
+        y = work[metric].to_numpy(dtype=float)
+        tw = TwoWay(work["TFV"].to_numpy(), work["greco"].to_numpy())
+        if mc == "bootstrap":
+            se = np.nan_to_num(work[f"{metric}_se"].to_numpy(dtype=float), nan=0.0)
+            draws = [y + rng.standard_normal(len(y)) * se for _ in range(n_mc)]
+        else:
+            half = 0.5 * (work[f"{metric}_hi"].to_numpy(float) - work[f"{metric}_lo"].to_numpy(float))
+            half = np.nan_to_num(np.maximum(half, 0.0), nan=0.0)
+            draws = [y + rng.uniform(-1.0, 1.0, len(y)) * half for _ in range(n_mc)]
+        res = partition_with_ci(tw, y, draws)
+        rows.append({"metric": metric, "metric_label": METRIC_LABELS[metric], "mc": mc, **res})
+    return pd.DataFrame(rows)

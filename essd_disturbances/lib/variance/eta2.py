@@ -78,7 +78,8 @@ def mc_eta2_ci_from_se(
     clip_nonneg: bool = False,
     clip_01_100: bool = False,
 ) -> dict[str, tuple[float, float]]:
-    """95% CI of η² (%) by perturbing ``y`` within row-level SEs (Normal)."""
+    """95% CI of η² (%) by perturbing ``y`` within row-level SEs (Normal), recentred on the point."""
+    from lib.variance.twoway import recentred_ci
     y = np.asarray(y, dtype=float)
     se = np.maximum(np.asarray(se, dtype=float), 0.0)
     w = np.ones(len(y), dtype=float)
@@ -95,11 +96,8 @@ def mc_eta2_ci_from_se(
                 store[name].append(100.0 * eta)
     out: dict[str, tuple[float, float]] = {}
     for name, vals in store.items():
-        if len(vals) < 10:
-            out[name] = (float("nan"), float("nan"))
-        else:
-            lo, hi = np.percentile(vals, [2.5, 97.5])
-            out[name] = (float(lo), float(hi))
+        point = 100.0 * eta2_arrays(np.asarray(y, float), np.ones(len(y)), groups[name])
+        out[name] = recentred_ci(point, vals, lo_bound=0.0, hi_bound=100.0)
     return out
 
 

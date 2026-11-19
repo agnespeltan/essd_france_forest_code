@@ -1,6 +1,6 @@
 """Join trends + severity into a table for ``lib.figures.fig_disturbances``.
 
-No rotation period (NFI harvest-age) — those panels stay off when plotting.
+No mean harvest age (NFI harvest-age) — those panels stay off when plotting.
 """
 
 from __future__ import annotations

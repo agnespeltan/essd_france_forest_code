@@ -157,11 +157,17 @@ def _trends_rate_universe(cfg: dict[str, Any], excluded: frozenset[str]) -> pd.D
 
 
 def _structural_zero_rate_keys(tr: pd.DataFrame) -> pd.DataFrame:
-    """Trends keys with forest present but no observed disturbance (median rate 0)."""
-    yc = pd.to_numeric(tr.get("year_count", 0), errors="coerce").fillna(0)
-    med = pd.to_numeric(tr.get("median_disturbance_rate", np.nan), errors="coerce")
-    # year_count==0 from structural-zero rows; also treat explicit zero median + 0 years
-    mask = (yc <= 0) & (med.fillna(0) <= 0)
+    """Trends keys with forest present but no observed disturbance."""
+    if "n_years_positive" in tr.columns:
+        npos = pd.to_numeric(tr["n_years_positive"], errors="coerce").fillna(0)
+        mask = npos <= 0
+    else:
+        yc = pd.to_numeric(tr.get("year_count", 0), errors="coerce").fillna(0)
+        level = pd.to_numeric(
+            tr.get("mean_disturbance_rate", tr.get("median_disturbance_rate", np.nan)),
+            errors="coerce",
+        )
+        mask = (yc <= 0) & (level.fillna(0) <= 0)
     return tr.loc[mask, _KEY_COLS].drop_duplicates()
 
 

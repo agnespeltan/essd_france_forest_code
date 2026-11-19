@@ -36,7 +36,7 @@ from lib.figures.constants import (
     TFV_LABEL,
     TFV_GROUP_ORDER,
 )
-from lib.figures.data import annotate_groups, calc_stats, load_figure_context, weighted_quantiles
+from lib.figures.data import annotate_groups, calc_stats, load_figure_context
 
 
 def _add_panel_label(ax, label, x=-0.08, y=1.10):
@@ -633,7 +633,6 @@ def plot_figure_si5(ctx: dict[str, Any], fig_dir: Path) -> Path | None:
     zz_lo = annotate_groups(ctx["rs_lo"])
     zz_main = annotate_groups(ctx["rs_main"])
     zz_hi = annotate_groups(ctx["rs_hi"])
-    empty = zz_main.iloc[0:0]
 
     def rs_for_greco(g):
         return (

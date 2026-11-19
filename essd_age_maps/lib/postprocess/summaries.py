@@ -16,6 +16,7 @@ from tqdm import tqdm
 
 from lib.config import fixed_age_path, features_root, output_dir, raster_path, resolve_under
 from lib.constants import AGE_NODATA
+from lib.naming import age_label
 
 _AGE_MULT = 1
 _SER_MULT = 10_000
@@ -210,8 +211,8 @@ def build_summaries_for_quantile(
     *,
     force: bool = False,
     n_jobs: int = 4,
-) -> tuple[Path, Path]:
-    """Rebuild ``forest_age_q{q}_hist.csv``, ``_5km.tif``, and ``_cv_5km.tif``."""
+) -> tuple[Path, Path, Path]:
+    """Rebuild ``forest_age_<label>_hist.csv``, ``_5km.tif`` and ``_cv_5km.tif`` (label: central/upper/lower)."""
     cfg = dict(cfg)
     cfg["quantile"] = int(quantile)
     age_tif = fixed_age_path(cfg)
@@ -219,9 +220,10 @@ def build_summaries_for_quantile(
         raise FileNotFoundError(f"Missing fixed age map: {age_tif}")
 
     out_dir = output_dir(cfg)
-    hist_csv = out_dir / f"forest_age_q{quantile}_hist.csv"
-    age_5km = out_dir / f"forest_age_q{quantile}_5km.tif"
-    age_cv = out_dir / f"forest_age_q{quantile}_cv_5km.tif"
+    lab = age_label(quantile)
+    hist_csv = out_dir / f"forest_age_{lab}_hist.csv"
+    age_5km = out_dir / f"forest_age_{lab}_5km.tif"
+    age_cv = out_dir / f"forest_age_{lab}_cv_5km.tif"
     tfv = raster_path(cfg, "tfv")
     ser = ser_raster_path(cfg)
 

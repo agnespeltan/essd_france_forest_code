@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the full age-map pipeline locally.
 
-Default: 00 weights → 01 all GRECO tiles (sequential) → 02 blend → 03 fix_nodata.
+Default: 00 weights → 01 all GRECO tiles (sequential) → 02 blend → 03 fix nodata + summaries.
 Optional: --with-figures runs figure generation after compute.
 
 Examples::
@@ -27,6 +27,7 @@ from lib.blend.weighted import create_weighted_age_map
 from lib.config import load_config
 from lib.invert.tiles import build_all_age_tiles, list_greco_ids
 from lib.postprocess.fix_nodata import fix_nodata
+from lib.postprocess.summaries import build_summaries_for_quantile
 from lib.weights.distance_masks import build_greco_weights
 
 
@@ -70,7 +71,8 @@ def main() -> None:
         help="Skip 01; use existing age tiles",
     )
     p.add_argument("--skip-blend", action="store_true", help="Skip 02 blend")
-    p.add_argument("--skip-fix", action="store_true", help="Skip 03 fix_nodata")
+    p.add_argument("--skip-fix", action="store_true", help="Skip 03 fix nodata")
+    p.add_argument("--skip-summaries", action="store_true", help="Skip 03 summaries (hist, 5 km, CV)")
     p.add_argument(
         "--with-figures",
         action="store_true",
@@ -135,7 +137,13 @@ def main() -> None:
         print("=== 03 fix nodata ===")
         print(fix_nodata(cfg, force=force))
     else:
-        print("=== 03 skipped (--skip-fix) ===")
+        print("=== 03 fix skipped (--skip-fix) ===")
+
+    if not args.skip_summaries:
+        print("=== 03 summaries (hist, 5 km, CV) ===")
+        print(build_summaries_for_quantile(cfg, int(cfg.get("quantile", 50)), force=force))
+    else:
+        print("=== 03 summaries skipped (--skip-summaries) ===")
 
     if args.with_figures:
         print("=== 04 make figures ===")

@@ -8,7 +8,7 @@ from pymannkendall import original_test
 
 
 def finite_sample_correction(n: np.ndarray | pd.Series) -> np.ndarray:
-    """Correction for median SE: 1 if n>=20, sqrt((n-1)/(n-3)) if n>3, else 2."""
+    """Small-n SE factor: 1 if n>=20, sqrt((n-1)/(n-3)) if n>3, else 2."""
     n = np.asarray(n, dtype=float)
     with np.errstate(divide="ignore", invalid="ignore"):
         small = np.sqrt((n - 1) / (n - 3))
@@ -21,26 +21,62 @@ def median_std(std: pd.Series, n_years: pd.Series) -> pd.Series:
     return 1.253 * std / np.sqrt(n_years.to_numpy(dtype=float)) * corr
 
 
+def mean_std(std: pd.Series, n_years: pd.Series) -> pd.Series:
+    """SE of the mean: sigma / sqrt(n) * same finite-sample factor as severity."""
+    corr = finite_sample_correction(n_years)
+    return std / np.sqrt(n_years.to_numpy(dtype=float)) * corr
+
+
+def sen_slope_xy(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
+    """Theil–Sen slope on actual x (calendar years); Conover intercept median(y) − slope·median(x)."""
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    i, j = np.triu_indices(len(x), k=1)
+    dx = x[j] - x[i]
+    ok = dx != 0
+    if not ok.any():
+        return float("nan"), float("nan")
+    slope = float(np.median((y[j] - y[i])[ok] / dx[ok]))
+    return slope, float(np.median(y) - slope * np.median(x))
+
+
 def mann_kendall_trend_test(
     df: pd.DataFrame,
     col: str,
     group_cols: list[str],
     min_points: int = 4,
+    x0: float | None = None,
 ) -> pd.DataFrame:
-    """Run Mann–Kendall (+ Theil–Sen slope SEs) per group on ``col``."""
+    """Run Mann–Kendall (+ Theil–Sen slope on calendar years, and SEs) per group on ``col``.
+
+    The intercept is the level at year ``x0`` (default: first year in ``df``);
+    the pipeline passes ``year_start`` so it always matches the config.
+
+    Non-finite values (e.g. patch size in zero-disturbance years) are dropped
+    before the test; ``disturbance_rate`` / ``patch_count`` should already be
+    zero-filled over the calendar window.
+    """
     results: list[dict] = []
     work = df.copy()
-    work["year_norm"] = work["year"] - work["year"].min()
+    y0 = float(work["year"].min()) if x0 is None else float(x0)
+    work["year_norm"] = work["year"] - y0
 
     for group_keys, group in work.groupby(group_cols, sort=False):
         group_sorted = group.sort_values("year_norm")
         y = group_sorted[col].to_numpy(dtype=float)
         x = group_sorted["year_norm"].to_numpy(dtype=float)
+        ok = np.isfinite(y) & np.isfinite(x)
+        y = y[ok]
+        x = x[ok]
         if len(y) < min_points:
             continue
 
-        mk = original_test(y)
-        trend_line = mk.intercept + mk.slope * x
+        mk = original_test(y)  # MK test uses the order only: gaps do not matter
+        # Theil–Sen on calendar years. pymannkendall's slope/intercept use the
+        # position in the series, which is wrong when years are missing (patch
+        # size in years without disturbance) or the series starts after y0.
+        slope, intercept = sen_slope_xy(x, y)
+        trend_line = intercept + slope * x
         residuals = y - trend_line
         n = len(y)
         if n > 2:
@@ -65,8 +101,8 @@ def mann_kendall_trend_test(
                 "trend": mk.trend,
                 "pvalue": mk.p,
                 "n_years": len(y),
-                "slope": mk.slope,
-                "intercept": mk.intercept,
+                "slope": slope,
+                "intercept": intercept,
                 "slope_std": slope_std,
                 "intercept_std": intercept_std,
                 "z": mk.z,
@@ -103,6 +139,7 @@ def metric_stats_and_trends(
     metric: str,
     group_cols: list[str],
     min_points: int,
+    x0: float | None = None,
 ) -> pd.DataFrame:
     """Mann–Kendall + distribution stats for one metric.
 
@@ -111,6 +148,7 @@ def metric_stats_and_trends(
     ``trend_* = "no trend"`` and null slopes (same fallback as a non-significant MK).
     """
     keys = group_cols + ["agent"]
+    # skipna=True (default): size metrics ignore NaN zero-years; rate/count use zeros
     stats = (
         df_agg.groupby(keys, sort=False)[metric]
         .agg(
@@ -119,7 +157,7 @@ def metric_stats_and_trends(
             std="std",
             q1=lambda x: x.quantile(0.25),
             q3=lambda x: x.quantile(0.75),
-            n_obs="count",
+            n_obs="count",  # count of non-NA
         )
         .reset_index()
     )
@@ -135,7 +173,7 @@ def metric_stats_and_trends(
     )
     stats[f"iqr_{metric}"] = stats[f"q3_{metric}"] - stats[f"q1_{metric}"]
 
-    trends = mann_kendall_trend_test(df_agg, metric, keys, min_points=min_points)
+    trends = mann_kendall_trend_test(df_agg, metric, keys, min_points=min_points, x0=x0)
     rename = {
         "trend": f"trend_{metric}",
         "pvalue": f"pvalue_{metric}",
@@ -175,4 +213,11 @@ def metric_stats_and_trends(
     out[f"median_std_{metric}"] = median_std(
         out[f"std_{metric}"], out[f"n_years_{metric}"]
     )
+    out[f"mean_std_{metric}"] = mean_std(
+        out[f"std_{metric}"], out[f"n_years_{metric}"]
+    )
+    # n<=1: sample std undefined → SE = 0 (point estimate only)
+    thin_n = out[f"n_years_{metric}"].fillna(0) <= 1
+    out.loc[thin_n, f"median_std_{metric}"] = 0.0
+    out.loc[thin_n, f"mean_std_{metric}"] = 0.0
     return out

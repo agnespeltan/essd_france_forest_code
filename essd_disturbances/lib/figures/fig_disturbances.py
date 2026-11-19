@@ -1,21 +1,17 @@
-"""Disturbance combined figures (self-contained; used by 05_make_figures.py).
+"""Disturbance figures, called by 05_make_figures.py.
 
-Writes Fig. 4–5, SI7–SI10, and SI11 (Kowalski severity maps; no exploitability / rotation).
+Writes Fig. 4–5, SI7–SI10 and SI11 (Kowalski severity maps). The 2020 level rule
+comes from ``lib.levels``; η² is computed only by 07_compute_variance.py.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import geopandas as gpd
 import matplotlib as mpl
-import rasterio
-from affine import Affine
-from rasterio.enums import Resampling
-from rasterio.transform import array_bounds
 
 from matplotlib.colors import TwoSlopeNorm, Normalize, to_rgba
 from matplotlib.lines import Line2D
@@ -23,14 +19,10 @@ import re
 from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 from matplotlib.transforms import blended_transform_factory
 
+# Single source for the 2020 level / fallback rule, reference year and pixel area.
+from lib.levels import PATCH_PIXEL_AREA_HA, _fitted_or_fallback
+
 # Interactive mode is set in run_figures(interactive=...); default is off / Agg.
-
-# Solid bar-plot colors
-NATURAL_SOLID_COLOR = 'firebrick'
-HARVEST_SOLID_COLOR = 'teal'
-
-# Configuration and data loading
-year_start = 1999
 
 # Severity: conservative AGB loss (Mg/ha biomass in CSV → MgC ha$_\mathrm{D}^{-1}$ below)
 AGBD_LOSS_COLUMN = 'agbd_lost_conservative'  # Options: 'agbd_lost_conservative' or 'agbd_lost'
@@ -41,28 +33,12 @@ RATE_X_SEVERITY_ERROR_COLUMN = f'{RATE_X_SEVERITY_COLUMN}_error'
 _REL_AGBD_STD = 'relative_agbd_lost'
 _REL_AGBD_CONS = 'relative_agbd_lost_conservative'
 _REL_AGBD_COLUMNS = (_REL_AGBD_STD, _REL_AGBD_CONS, RELATIVE_AGBD_LOSS_COLUMN)
-ROTATION_PERIOD_COLUMN = 'rotation_period'
-ROTATION_PERIOD_ERROR_COLUMN = 'rotation_period_err'
-TREE_COVER_LOW_THRESHOLD = 0.10
-_TREE_COVER_PATH = '/path/to/Resultat_France/Features_30m/tree_cover_map.tif'
-_EXPLOITABILITY_PATH = (
-    '/path/to/Resultat_France/Features_30m/Geomorphometry_30m/exploitabilite.tif'
-)
-_FOREST_TFV_MASK_PATH = (
-    '/path/to/Resultat_France/Features_30m/Foret_30m/BD_Foret_TFVnum_30m_valideNR.tif'
-)
-_PATCH_PIXEL_AREA_HA = (30.0 * 30.0) / 10000.0  # 30 m pixel = 0.09 ha
-_5KM_TARGET_RES_M = 5000.0
-_EXPLOITABLE_FRAC_FOREST_5KM_TIF = (
-    '/path/to/Resultat_France/Data/exploitability_fraction_forest_5km_tc10.tif'
-)
-_FOREST_PIXEL_COUNT_5KM_TIF = (
-    '/path/to/Resultat_France/Data/forest_pixel_count_5km_tc10.tif'
-)
+MEAN_HARVEST_AGE_COLUMN = 'mean_harvest_age'
+MEAN_HARVEST_AGE_ERROR_COLUMN = 'mean_harvest_age_err'
+_PATCH_PIXEL_AREA_HA = PATCH_PIXEL_AREA_HA  # 30 m pixel = 0.09 ha
 _DOT_WHISKER_OFFSET = 0.2
 _DOT_MARKERSIZE = 11
 _DOT_MARKER_ALPHA = 1.0
-_DOT_BOX_ASPECT_GROUP = 1
 _DOT_BOX_ASPECT_TFV = 0.6
 _LEGEND_MARKERSIZE = _DOT_MARKERSIZE + 3
 _AXIS_TICK_LABELSIZE = 14
@@ -75,7 +51,7 @@ _MAP_CBAR_WIDTH = 0.03
 _MAP_CBAR_HEIGHT = 0.4
 _CLIP_ANNOT_FONTSIZE = 11
 _XTICK_LABEL_PAD = 40
-_ROTATION_MID_TITLE_X_FRAC = 0.82  # between exploitability and rotation maps, biased right
+_HARVEST_AGE_MID_TITLE_X_FRAC = 0.82  # between exploitability and mean-harvest-age maps, biased right
 _HARVEST_MARKER = 'o'
 _NATURAL_MARKER = 's'
 
@@ -85,9 +61,6 @@ AGB_MAP_SIGMA_MG_HA = 60.0
 AGBD_LOSS_MAP_SIGMA_MG_HA = np.sqrt(2.0) * AGB_MAP_SIGMA_MG_HA
 CARBON_FRACTION = 0.475
 # Kowalski / Planet AGBD loss on 10 km ETRS89-LAEA grid (Europe → clipped to France)
-_KOWALSKI_LOSS_CSV = '/path/to/Severity_Katja/planet_agbd_loss_10km.csv'
-_KOWALSKI_GRID_SHP = '/path/to/Severity_Katja/grid_10km_3035.shp'
-_FRANCE_OUTLINE_SHP = '/path/to/IGN_donnees/France_1km.shp'
 # Normal approximation: 95% CI = estimate ± z * SE
 NATIONAL_CI_Z_95 = 1.96
 # Relative-uncertainty map masking (unused): was grey when area < 0.2% and rel. unc. > 200%
@@ -128,11 +101,6 @@ TFV_GROUP_COLORS = {
     'Mixed deciduous': '#1565C0',
     'Mixed conifers': '#E65100',
 }
-TFV_BROAD_COLORS = {
-    'Deciduous': '#228833',
-    'Conifers': 'mediumvioletred',
-}
-
 # SI TFV figures: horizontal (TFV on y, values on x), Fig_age_distribution S11 style
 _SI_FIG_HEIGHT = 9.0
 _SI_PANEL_WIDTH = 2.9
@@ -215,9 +183,9 @@ dict_group_tfvs = {
 
 
 def load_kowalski_france_severity(
-    loss_csv: str | Path = _KOWALSKI_LOSS_CSV,
-    grid_shp: str | Path = _KOWALSKI_GRID_SHP,
-    france_shp: str | Path = _FRANCE_OUTLINE_SHP,
+    loss_csv: str | Path,
+    grid_shp: str | Path,
+    france_shp: str | Path,
     target_crs: str | None = 'EPSG:2154',
 ) -> gpd.GeoDataFrame:
     """Join Planet/Kowalski 10 km severity to the LAEA grid and clip to France.
@@ -389,10 +357,10 @@ def rate_weighted_severity_by_ser(
 def write_si11_kowalski_figure(
     figure_dir: str | Path,
     *,
-    loss_csv: str | Path = _KOWALSKI_LOSS_CSV,
-    grid_shp: str | Path = _KOWALSKI_GRID_SHP,
-    france_shp: str | Path = _FRANCE_OUTLINE_SHP,
-    ser_shapefile: str | Path = '/path/to/IGN_donnees/France_ser.shp',
+    loss_csv: str | Path,
+    grid_shp: str | Path,
+    france_shp: str | Path,
+    ser_shapefile: str | Path,
     harvest_agg: pd.DataFrame | None = None,
     natural_agg: pd.DataFrame | None = None,
     abs_sev_col: str = AGBD_LOSS_COLUMN,
@@ -455,7 +423,10 @@ def write_si11_kowalski_figure(
             .merge(rel_w, left_on='ser_num', right_on='ser', how='left')
             .drop(columns=['ser'], errors='ignore')
         )
-        # Join Kowalski SER values for ours − Kowalski difference maps.
+        # The SER shapefile has 471 polygon parts for 86 SERs. Values are per SER
+        # (Kowalski: dissolved before the overlay; ours: per ser_num), so every part
+        # of a SER gets the same value; colour limits use min/max, so parts do not
+        # weight anything. Join Kowalski SER values for ours − Kowalski difference maps.
         kow_stats = (
             ser_kow.drop_duplicates('ser_num')[
                 ['ser_num', 'planet_mean_sev_abs_mgc', 'planet_mean_sev_rel_pct']
@@ -596,21 +567,25 @@ def run_figures(
     trend_csv: str | Path,
     figure_dir: str | Path,
     *,
-    ser_shapefile: str | Path = '/path/to/IGN_donnees/France_ser.shp',
-    greco_shapefile: str | Path = '/path/to/IGN_donnees/France_greco.shp',
-    kowalski_loss_csv: str | Path | None = None,
-    kowalski_grid_shp: str | Path | None = None,
+    year_start: int,
+    ser_shapefile: str | Path,
+    france_outline_shp: str | Path,
+    kowalski_loss_csv: str | Path,
+    kowalski_grid_shp: str | Path,
     interactive: bool = False,
 ) -> Path:
-    """Load joined trends+severity CSV and write Fig. 4–5, SI7–SI11 PNGs."""
-    from pathlib import Path as _Path
-    trend_csv = _Path(trend_csv).expanduser()
-    figure_dir = _Path(figure_dir).expanduser()
+    """Load joined trends+severity CSV and write Fig. 4–5, SI7–SI11 PNGs.
+
+    All inputs come from essd_disturbances/config.yaml via 05_make_figures.py
+    (``year_start``, ``ser_shapefile``, ``france_outline_shp``, ``kowalski_*``).
+    """
+    trend_csv = Path(trend_csv).expanduser()
+    figure_dir = Path(figure_dir).expanduser()
     figure_dir.mkdir(parents=True, exist_ok=True)
-    ser_shapefile = _Path(ser_shapefile).expanduser()
-    greco_shapefile = _Path(greco_shapefile).expanduser()
-    _kowalski_csv = _Path(kowalski_loss_csv).expanduser() if kowalski_loss_csv else Path(_KOWALSKI_LOSS_CSV)
-    _kowalski_grid = _Path(kowalski_grid_shp).expanduser() if kowalski_grid_shp else Path(_KOWALSKI_GRID_SHP)
+    ser_shapefile = Path(ser_shapefile).expanduser()
+    france_outline_shp = Path(france_outline_shp).expanduser()
+    _kowalski_csv = Path(kowalski_loss_csv).expanduser()
+    _kowalski_grid = Path(kowalski_grid_shp).expanduser()
     if not interactive:
         plt.ioff()
     else:
@@ -668,46 +643,14 @@ def run_figures(
     # Relative AGB loss is a fraction of stand AGB: clamp to [0, 100]%.
     _clip_relative_agbd_pct(trend_ok)
 
-    def _as_float(series):
-        """Numeric column as a float array, with non-numeric values set to 0."""
-        return np.nan_to_num(pd.to_numeric(series, errors='coerce').to_numpy(dtype=float), nan=0.0)
-
-
-    def _fitted_or_fallback(trend, intercept, slope, intercept_se, slope_se, median, median_se,
-                            invalid_below, fallback_floor):
-        """2020 level from intercept + (2020-1999)×slope, or the median when that line is not kept.
-
-        The point slope is 0 when the line is not kept. The slope SE stays the regression SE.
-        Covariance is (2020-1999)×σ_slope² only on rows that keep the fitted line.
-        """
-        dt = float(2020 - year_start)
-        keep = trend.astype(str).to_numpy() != 'no trend'
-        a = _as_float(intercept)
-        b = _as_float(slope)
-        sa = _as_float(intercept_se)
-        sb = np.maximum(_as_float(slope_se), 0.0)
-        med = _as_float(median)
-        sm = np.maximum(_as_float(median_se), 0.0)
-        fitted = a + b * dt
-        fitted_se = np.sqrt(sa ** 2 + (sb * dt) ** 2)
-        keep = keep & np.isfinite(fitted) & (fitted >= invalid_below)
-        fallback = np.where(np.isfinite(med), med, fallback_floor)
-        fallback = np.maximum(fallback, fallback_floor)
-        level = np.where(keep, fitted, fallback)
-        level_se = np.maximum(np.where(keep, fitted_se, sm), 0.0)
-        slope_hat = np.where(keep, b, 0.0)
-        cov = np.where(keep, dt * sb ** 2, 0.0)
-        return level, level_se, slope_hat, sb, cov, keep
-
-
     def add_row_disturbance_metrics(df):
         """Value and standard error of every disturbance quantity, one row at a time."""
-        level, level_se, slope, slope_se, cov, _ = _fitted_or_fallback(
+        level, level_se, slope, slope_se, cov = _fitted_or_fallback(
             df['trend_disturbance_rate'],
             df['intercept_disturbance_rate'], df['slope_disturbance_rate'],
             df['intercept_std_disturbance_rate'], df['slope_std_disturbance_rate'],
-            df['median_disturbance_rate'], df['median_std_disturbance_rate'],
-            invalid_below=0.0, fallback_floor=0.0,
+            df['mean_disturbance_rate'], df['mean_std_disturbance_rate'],
+            year_start=year_start, invalid_below=0.0, fallback_floor=0.0,
         )
         df['disturbance_rate_2020'] = level
         df['disturbance_rate_2020_error'] = level_se
@@ -719,12 +662,13 @@ def run_figures(
         df['slope_pp_err'] = slope_se * 100.0
         df['d_area_level_slope_cov'] = cov * 100.0 ** 2
 
-        level_px, level_px_se, slope_px, slope_px_se, cov_px, _ = _fitted_or_fallback(
+        level_px, level_px_se, slope_px, slope_px_se, cov_px = _fitted_or_fallback(
             df['trend_mean_patch_size'],
             df['intercept_mean_patch_size'], df['slope_mean_patch_size'],
             df['intercept_std_mean_patch_size'], df['slope_std_mean_patch_size'],
+            # Patch level: median (quiet years are NaN, so excluded); rate keeps the mean.
             df['median_mean_patch_size'], df['median_std_mean_patch_size'],
-            invalid_below=1.0, fallback_floor=1.0,
+            year_start=year_start, invalid_below=1.0, fallback_floor=1.0,
         )
         ha = _PATCH_PIXEL_AREA_HA
         df['mean_patch_size_2020'] = level_px * ha
@@ -768,9 +712,7 @@ def run_figures(
             lambda c: (ord(str(c).strip()[0].upper()) - 64) * 100 + int(str(c).strip()[1:])
         )
 
-    # Load GRECO shapefile for overlay
-    greco_gdf = gpd.read_file(str(greco_shapefile))
-    france_gdf = gpd.read_file(_FRANCE_OUTLINE_SHP)
+    france_gdf = gpd.read_file(france_outline_shp)
 
 
     def _group_df_for_national_se(df, tfv_col=TFV_COL):
@@ -835,7 +777,7 @@ def run_figures(
     def _cov_area_weighted_means(df, cov_col, weight_col='total_area', tfv_col=TFV_COL):
         """Cov of two area-weighted means from within-row covariances.
 
-        cov_col is (2020-1999)×σ_slope² on rows that keep the fitted line, else 0.
+        cov_col is (YEAR_REF − year_start)·σ_slope² on rows that keep the fitted line, else 0.
         Inside a TFV the slope shocks are one shared shock, so the covariance of the
         weighted sums is (Σ w_i √cov_i)².
         """
@@ -889,7 +831,7 @@ def run_figures(
 
 
     def se_lost_agb_national(df, tfv_col=TFV_COL):
-        """SE of the sum of lost biomass (TgC): TFV-block of the row-level flux errors."""
+        """SE of the sum of lost biomass (MtC): TFV-block of the row-level flux errors."""
         work = _group_df_for_national_se(df, tfv_col=tfv_col)
         sig = np.maximum(work['lost_agb_error'].fillna(0).to_numpy(dtype=float), 0.0)
         return float(np.sqrt(var_sum_oneway_block(sig, work[tfv_col].to_numpy())))
@@ -907,35 +849,35 @@ def run_figures(
             AGBD_LOSS_COLUMN: agbd_loss_error_col,
             RELATIVE_AGBD_LOSS_COLUMN: relative_agbd_loss_error_col,
             RATE_X_SEVERITY_COLUMN: RATE_X_SEVERITY_ERROR_COLUMN,
-            ROTATION_PERIOD_COLUMN: ROTATION_PERIOD_ERROR_COLUMN,
+            MEAN_HARVEST_AGE_COLUMN: MEAN_HARVEST_AGE_ERROR_COLUMN,
         }
         if value_col in known:
             return known[value_col]
         return f'{value_col}_error'
 
 
-    def _rotation_positive_subset(df):
-        """Rows with a positive rotation period, its error, and forest area."""
-        cols = [ROTATION_PERIOD_COLUMN, ROTATION_PERIOD_ERROR_COLUMN, 'total_area', TFV_COL]
+    def _harvest_age_positive_subset(df):
+        """Rows with a positive mean harvest age, its error, and forest area."""
+        cols = [MEAN_HARVEST_AGE_COLUMN, MEAN_HARVEST_AGE_ERROR_COLUMN, 'total_area', TFV_COL]
         missing = [c for c in cols if c not in df.columns]
         if missing:
             return df.iloc[0:0].copy()
         work = df[cols].copy()
         return work[
-            np.isfinite(work[ROTATION_PERIOD_COLUMN]) & (work[ROTATION_PERIOD_COLUMN] > 0)
-            & np.isfinite(work[ROTATION_PERIOD_ERROR_COLUMN]) & (work[ROTATION_PERIOD_ERROR_COLUMN] >= 0)
+            np.isfinite(work[MEAN_HARVEST_AGE_COLUMN]) & (work[MEAN_HARVEST_AGE_COLUMN] > 0)
+            & np.isfinite(work[MEAN_HARVEST_AGE_ERROR_COLUMN]) & (work[MEAN_HARVEST_AGE_ERROR_COLUMN] >= 0)
             & (work['total_area'] > 0)
         ]
 
 
-    def _rotation_mean_subset(df):
-        """Rows with a positive rotation period and forest area."""
-        cols = [ROTATION_PERIOD_COLUMN, 'total_area']
+    def _harvest_age_mean_subset(df):
+        """Rows with a positive mean harvest age and forest area."""
+        cols = [MEAN_HARVEST_AGE_COLUMN, 'total_area']
         if any(c not in df.columns for c in cols):
             return df.iloc[0:0].copy()
         work = df[cols].copy()
         return work[
-            np.isfinite(work[ROTATION_PERIOD_COLUMN]) & (work[ROTATION_PERIOD_COLUMN] > 0)
+            np.isfinite(work[MEAN_HARVEST_AGE_COLUMN]) & (work[MEAN_HARVEST_AGE_COLUMN] > 0)
             & (work['total_area'] > 0)
         ]
 
@@ -962,6 +904,13 @@ def run_figures(
         """Area-weighted mean patch size (ha) and its TFV-block SE."""
         return national_area_weighted_mean_stderr(
             df, 'mean_patch_size_2020', 'mean_patch_size_2020_error', tfv_col=tfv_col,
+        )
+
+
+    def national_rate_evolution_mean_stderr(df, tfv_col=TFV_COL):
+        """100 × mean(rate slope) / mean(2020 rate), with the TFV-block delta-method SE."""
+        return ratio_of_means_stats(
+            df, *_RATIO_OF_MEANS_SPECS['d_area_evolution_perc'], tfv_col=tfv_col,
         )
 
 
@@ -1010,6 +959,8 @@ def run_figures(
         harv_patch, harv_patch_se = national_mean_patch_size_mean_stderr(harvest_df)
         nat_ptev, nat_ptev_se = national_mean_patch_size_evolution_mean_stderr(natural_df)
         harv_ptev, harv_ptev_se = national_mean_patch_size_evolution_mean_stderr(harvest_df)
+        nat_rtev, nat_rtev_se = national_rate_evolution_mean_stderr(natural_df)
+        harv_rtev, harv_rtev_se = national_rate_evolution_mean_stderr(harvest_df)
         nat_agbd, nat_agbd_se = national_agbd_loss_mean_stderr(natural_df)
         harv_agbd, harv_agbd_se = national_agbd_loss_mean_stderr(harvest_df)
         nat_rel_agbd, nat_rel_agbd_se = national_relative_agbd_loss_mean_stderr(natural_df)
@@ -1023,6 +974,8 @@ def run_figures(
         table = pd.DataFrame([
             {'component': 'Disturbance rate (natural)', 'value': nat_rate, 'se': nat_rate_se, 'unit': '%'},
             {'component': 'Disturbance rate (harvest)', 'value': harv_rate, 'se': harv_rate_se, 'unit': '%'},
+            {'component': 'Rate trend (natural)', 'value': nat_rtev, 'se': nat_rtev_se, 'unit': '%/yr'},
+            {'component': 'Rate trend (harvest)', 'value': harv_rtev, 'se': harv_rtev_se, 'unit': '%/yr'},
             {'component': 'Mean patch size (natural)', 'value': nat_patch, 'se': nat_patch_se, 'unit': 'ha'},
             {'component': 'Mean patch size (harvest)', 'value': harv_patch, 'se': harv_patch_se, 'unit': 'ha'},
             {'component': 'Patch size trend (natural)', 'value': nat_ptev, 'se': nat_ptev_se, 'unit': '%/yr'},
@@ -1031,9 +984,9 @@ def run_figures(
             {'component': 'AGB loss (harvest)', 'value': harv_agbd, 'se': harv_agbd_se, 'unit': r'MgC ha$_\mathrm{D}^{-1}$'},
             {'component': 'Relative AGB loss (natural)', 'value': nat_rel_agbd, 'se': nat_rel_agbd_se, 'unit': '%'},
             {'component': 'Relative AGB loss (harvest)', 'value': harv_rel_agbd, 'se': harv_rel_agbd_se, 'unit': '%'},
-            {'component': 'Harvest total AGB loss', 'value': cc, 'se': se_cc, 'unit': 'TgC'},
-            {'component': 'Natural total AGB loss', 'value': nat_flux, 'se': se_nat, 'unit': 'TgC'},
-            {'component': 'Total AGB loss', 'value': total_flux, 'se': total_se, 'unit': 'TgC'},
+            {'component': 'Harvest total AGB loss', 'value': cc, 'se': se_cc, 'unit': 'MtC'},
+            {'component': 'Natural total AGB loss', 'value': nat_flux, 'se': se_nat, 'unit': 'MtC'},
+            {'component': 'Total AGB loss', 'value': total_flux, 'se': total_se, 'unit': 'MtC'},
         ])
         table['pct_error'] = np.where(
             table['value'].abs() > 0,
@@ -1155,21 +1108,21 @@ def run_figures(
             agg_dict[RATE_X_SEVERITY_ERROR_COLUMN] = _se_of(
                 RATE_X_SEVERITY_COLUMN, RATE_X_SEVERITY_ERROR_COLUMN,
             )
-        if ROTATION_PERIOD_COLUMN in filtered_df.columns:
+        if MEAN_HARVEST_AGE_COLUMN in filtered_df.columns:
             def _rot_mean(x):
-                work = _rotation_mean_subset(x)
+                work = _harvest_age_mean_subset(x)
                 if work.empty or work['total_area'].sum() <= 0:
                     return np.nan
-                return float(np.average(work[ROTATION_PERIOD_COLUMN], weights=work['total_area']))
-            agg_dict[ROTATION_PERIOD_COLUMN] = _rot_mean
-        if ROTATION_PERIOD_ERROR_COLUMN in filtered_df.columns:
+                return float(np.average(work[MEAN_HARVEST_AGE_COLUMN], weights=work['total_area']))
+            agg_dict[MEAN_HARVEST_AGE_COLUMN] = _rot_mean
+        if MEAN_HARVEST_AGE_ERROR_COLUMN in filtered_df.columns:
             def _rot_se(x):
-                work = _rotation_positive_subset(x)
+                work = _harvest_age_positive_subset(x)
                 if work.empty or work['total_area'].sum() <= 0:
                     return 0.0
-                se = stderr_area_weighted_mean_tfv_block(work, ROTATION_PERIOD_ERROR_COLUMN)
+                se = stderr_area_weighted_mean_tfv_block(work, MEAN_HARVEST_AGE_ERROR_COLUMN)
                 return 0.0 if not np.isfinite(se) else float(se)
-            agg_dict[ROTATION_PERIOD_ERROR_COLUMN] = _rot_se
+            agg_dict[MEAN_HARVEST_AGE_ERROR_COLUMN] = _rot_se
         if 'lost_agb' in filtered_df.columns:
             agg_dict['lost_agb'] = lambda x: float(np.sum(x['lost_agb']))
             agg_dict['lost_agb_error'] = lambda x: se_lost_agb_national(x)
@@ -1193,222 +1146,6 @@ def run_figures(
     # HELPER FUNCTIONS
     # ===============================
 
-    def _forest_exploitable_masks(exploit, forest, tree_cover=None,
-                                  exp_nodata=None, forest_nodata=None, tc_nodata=None):
-        """Boolean masks for TFV-valid forest and exploitable pixels at 30 m."""
-        valid_exp = np.isfinite(exploit)
-        if exp_nodata is not None:
-            valid_exp &= ~np.isclose(exploit, exp_nodata)
-        is_forest = np.isfinite(forest) & (forest > 0)
-        if forest_nodata is not None:
-            is_forest &= ~np.isclose(forest, forest_nodata)
-        if tree_cover is not None:
-            valid_tc = np.isfinite(tree_cover) & (tree_cover > TREE_COVER_LOW_THRESHOLD)
-            if tc_nodata is not None:
-                valid_tc &= ~np.isclose(tree_cover, tc_nodata)
-            is_forest &= valid_tc
-        exploitable = is_forest & valid_exp & (exploit == 1)
-        return is_forest, exploitable
-
-
-    def compute_exploitability_fraction_forest_5km():
-        """5 km share of exploitable forest pixels (TFV valid, exploitabilite == 1)."""
-        with (
-            rasterio.open(_EXPLOITABILITY_PATH) as exp_src,
-            rasterio.open(_FOREST_TFV_MASK_PATH) as forest_src,
-        ):
-            crs = exp_src.crs
-            scale_factor = max(1, int(round(_5KM_TARGET_RES_M / abs(exp_src.transform.a))))
-            out_h = (exp_src.height + scale_factor - 1) // scale_factor
-            out_w = (exp_src.width + scale_factor - 1) // scale_factor
-            forest_acc = np.zeros((out_h, out_w), dtype=np.float64)
-            exploitable_forest_acc = np.zeros((out_h, out_w), dtype=np.float64)
-            out_transform = exp_src.transform * Affine.scale(scale_factor)
-            exp_nodata = exp_src.nodata
-            forest_nodata = forest_src.nodata
-
-            for _, window in exp_src.block_windows(1):
-                exploit = exp_src.read(1, window=window).astype(np.float32, copy=False)
-                forest = forest_src.read(1, window=window).astype(np.float32, copy=False)
-                is_forest, exploitable_forest = _forest_exploitable_masks(
-                    exploit, forest,
-                    exp_nodata=exp_nodata, forest_nodata=forest_nodata,
-                )
-
-                row_off, col_off = window.row_off, window.col_off
-                h, w = window.height, window.width
-                row_idx = (np.arange(h, dtype=np.int64)[:, None] + row_off) // scale_factor
-                col_idx = (np.arange(w, dtype=np.int64)[None, :] + col_off) // scale_factor
-                flat_idx = (row_idx * out_w + col_idx).ravel()
-                np.add.at(forest_acc.ravel(), flat_idx, is_forest.ravel().astype(np.float64))
-                np.add.at(exploitable_forest_acc.ravel(), flat_idx, exploitable_forest.ravel().astype(np.float64))
-
-            frac = np.full((out_h, out_w), np.nan, dtype=np.float32)
-            has_forest = forest_acc > 0
-            frac[has_forest] = (exploitable_forest_acc[has_forest] / forest_acc[has_forest]).astype(np.float32)
-            raster_bounds = array_bounds(out_h, out_w, out_transform)
-
-        return frac, raster_bounds, forest_acc.astype(np.float32), out_transform, crs
-
-
-    def _load_tree_cover_5km_for_frac(frac_shape):
-        """5 km tree cover aligned to the exploitability fraction grid (display mask only)."""
-        with rasterio.open(_TREE_COVER_PATH) as tc_src:
-            tree_cover_5km = tc_src.read(
-                1, out_shape=frac_shape, resampling=Resampling.average,
-            ).astype(np.float32)
-            if tc_src.nodata is not None:
-                tree_cover_5km[np.isclose(tree_cover_5km, tc_src.nodata)] = np.nan
-        return tree_cover_5km
-
-
-    def _save_exploitability_fraction_forest_5km_cache(frac, transform, crs, forest_px_5km):
-        os.makedirs(os.path.dirname(_EXPLOITABLE_FRAC_FOREST_5KM_TIF), exist_ok=True)
-        profile = {
-            'driver': 'GTiff',
-            'dtype': 'float32',
-            'count': 1,
-            'height': frac.shape[0],
-            'width': frac.shape[1],
-            'transform': transform,
-            'crs': crs,
-            'nodata': -9999.0,
-            'compress': 'deflate',
-        }
-        frac_out = np.where(np.isfinite(frac), frac, profile['nodata']).astype(np.float32)
-        with rasterio.open(_EXPLOITABLE_FRAC_FOREST_5KM_TIF, 'w', **profile) as dst:
-            dst.write(frac_out, 1)
-        forest_out = np.where(np.isfinite(forest_px_5km), forest_px_5km, profile['nodata']).astype(np.float32)
-        with rasterio.open(_FOREST_PIXEL_COUNT_5KM_TIF, 'w', **profile) as dst:
-            dst.write(forest_out, 1)
-
-
-    def _load_exploitability_fraction_forest_5km_cache():
-        with rasterio.open(_EXPLOITABLE_FRAC_FOREST_5KM_TIF) as src:
-            frac = src.read(1).astype(np.float32)
-            nodata = src.nodata if src.nodata is not None else -9999.0
-            frac[np.isclose(frac, nodata)] = np.nan
-            raster_bounds = array_bounds(src.height, src.width, src.transform)
-        with rasterio.open(_FOREST_PIXEL_COUNT_5KM_TIF) as src:
-            forest_px_5km = src.read(1).astype(np.float32)
-            nodata = src.nodata if src.nodata is not None else -9999.0
-            forest_px_5km[np.isclose(forest_px_5km, nodata)] = np.nan
-        tree_cover_5km = _load_tree_cover_5km_for_frac(frac.shape)
-        return frac, raster_bounds, forest_px_5km, tree_cover_5km
-
-
-    def load_or_compute_exploitability_fraction_forest_5km():
-        """Load cached 5 km forest exploitability fraction, or compute and save once."""
-        cache_files = (
-            _EXPLOITABLE_FRAC_FOREST_5KM_TIF,
-            _FOREST_PIXEL_COUNT_5KM_TIF,
-        )
-        if all(os.path.isfile(path) for path in cache_files):
-            print(f'Using cached 5 km forest exploitability fraction: {_EXPLOITABLE_FRAC_FOREST_5KM_TIF}')
-            return _load_exploitability_fraction_forest_5km_cache()
-        print('Computing 5 km forest exploitability fraction (cached for next runs)...')
-        frac, raster_bounds, forest_px_5km, transform, crs = (
-            compute_exploitability_fraction_forest_5km()
-        )
-        _save_exploitability_fraction_forest_5km_cache(
-            frac, transform, crs, forest_px_5km,
-        )
-        tree_cover_5km = _load_tree_cover_5km_for_frac(frac.shape)
-        return frac, raster_bounds, forest_px_5km, tree_cover_5km
-
-
-    def plot_exploitability_fraction_forest_5km(ax, frac, raster_bounds, forest_px_5km, tree_cover_5km,
-                                                cbar_tick_fontsize=_MAP_CBAR_TICK_FONTSIZE):
-        """5 km forest exploitability fraction; tree cover <= 10% and non-forest cells masked transparent."""
-        left, bottom, right, top = raster_bounds
-        extent = [left, right, bottom, top]
-        low_tc = (np.isnan(tree_cover_5km)) | (tree_cover_5km <= TREE_COVER_LOW_THRESHOLD)
-        no_forest = (np.isnan(forest_px_5km)) | (forest_px_5km <= 0)
-
-        france_gdf.plot(ax=ax, color='white', edgecolor='none', zorder=1)
-        ax.set_facecolor('none')
-
-        valid_frac = np.isfinite(frac) & ~no_forest & ~low_tc
-        if not np.any(valid_frac):
-            ax.set_axis_off()
-            ax.text(0.5, 0.5, 'No data available', transform=ax.transAxes,
-                    fontsize=12, ha='center', va='center')
-            return
-
-        vmin, vmax = 0.0, 1.0
-        cmap_obj = mpl.colormaps['viridis_r'].copy()
-        cmap_obj.set_bad((0, 0, 0, 0))
-        display = np.ma.masked_where(~valid_frac, frac)
-        im = ax.imshow(
-            display, cmap=cmap_obj, vmin=vmin, vmax=vmax, extent=extent,
-            interpolation='none', aspect='equal', zorder=2,
-        )
-        france_gdf.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=0.5, zorder=4)
-
-        ax._map_cbar_spec = {
-            'mappable': im,
-            'ticks': [0, 1],
-            'labels': ['0%', '100%'],
-            'cbar_tick_fontsize': cbar_tick_fontsize,
-        }
-        ax.set_axis_off()
-
-
-    def _exploitability_region_masks(nomser):
-        """Boolean masks for manuscript exploitability regions (NomSER patterns)."""
-        return {
-            'National': np.ones(len(nomser), dtype=bool),
-            'Alps': nomser.str.contains('Alpes', case=False, na=False).to_numpy(),
-            'Pyrénées': nomser.str.contains('Pyr', case=False, na=False).to_numpy(),
-            'Corsica': nomser.str.contains('Corse', case=False, na=False).to_numpy(),
-        }
-
-
-    def summarize_exploitability_fraction_forest_5km(frac, forest_px_5km, raster_bounds, ser_gdf=None):
-        """National/regional forest exploitability (%), weighted by 30 m forest pixel count per 5 km cell."""
-        if ser_gdf is None:
-            ser_gdf = france_ser
-        left, bottom, right, top = raster_bounds
-        h, w = frac.shape
-        xs = np.linspace(left, right, w, endpoint=False) + (right - left) / (2 * w)
-        ys = np.linspace(top, bottom, h, endpoint=False) - (top - bottom) / (2 * h)
-        xx, yy = np.meshgrid(xs, ys)
-        forest_mask = np.isfinite(frac) & np.isfinite(forest_px_5km) & (forest_px_5km > 0)
-        if not np.any(forest_mask):
-            return pd.DataFrame()
-
-        ptg = gpd.GeoDataFrame(
-            {
-                'exp_frac': frac[forest_mask].ravel(),
-                'forest_px': forest_px_5km[forest_mask].ravel(),
-            },
-            geometry=gpd.points_from_xy(xx[forest_mask], yy[forest_mask]),
-            crs=ser_gdf.crs,
-        )
-        joined = gpd.sjoin_nearest(
-            ptg, ser_gdf[['ser_num', 'NomSER', 'geometry']], how='left',
-        )
-        rows = []
-        for region, mask in _exploitability_region_masks(joined['NomSER']).items():
-            sub = joined.loc[mask]
-            if sub.empty or sub['forest_px'].sum() <= 0:
-                continue
-            pct = 100.0 * float(np.average(sub['exp_frac'], weights=sub['forest_px']))
-            rows.append({'region': region, 'pct_exploitable': pct, 'n_cells': len(sub)})
-        return pd.DataFrame(rows)
-
-
-    def print_exploitability_manuscript_summary(summary_df):
-        """Print forest exploitability percentages for manuscript text."""
-        if summary_df is None or summary_df.empty:
-            return
-        lookup = summary_df.set_index('region')['pct_exploitable']
-        print('\nForest exploitability (5 km, TFV forest, forest-pixel weighted):')
-        for region in ('National', 'Alps', 'Pyrénées', 'Corsica'):
-            if region in lookup.index:
-                print(f'  {region}: {lookup[region]:.0f}%')
-
-
     def _fmt_ci95(mean, se, mean_nd=1, half_nd=None):
         """Format mean ± 95% CI half-width for manuscript text."""
         half = NATIONAL_CI_Z_95 * float(se)
@@ -1416,81 +1153,6 @@ def run_figures(
             half_nd = 2 if half < 1.0 else 0
         return f'{float(mean):.{mean_nd}f}±{half:.{half_nd}f}'
 
-
-    def print_manuscript_patch_rotation_summary(harvest_df, natural_df):
-        """Print patch size and rotation period with 95% CI half-widths for manuscript text.
-
-        Figures plot mean ± SE; manuscript quotes use ±1.96×SE (95% CI).
-        """
-        harv_patch, harv_patch_se = national_mean_patch_size_mean_stderr(harvest_df)
-        nat_patch, nat_patch_se = national_mean_patch_size_mean_stderr(natural_df)
-        harv_ptev, harv_ptev_se = national_mean_patch_size_evolution_mean_stderr(harvest_df)
-        nat_ptev, nat_ptev_se = national_mean_patch_size_evolution_mean_stderr(natural_df)
-        print('\nManuscript patch size (ha$_\\mathrm{D}$, 95% CI):')
-        print(f'  Harvest national: {_fmt_ci95(harv_patch, harv_patch_se)}')
-        print(f'  Natural national: {_fmt_ci95(nat_patch, nat_patch_se)}')
-        print('\nManuscript patch size trend relative to 2020 (%/yr, 95% CI):')
-        print(f'  Harvest national: {_fmt_ci95(harv_ptev, harv_ptev_se)}')
-        print(f'  Natural national: {_fmt_ci95(nat_ptev, nat_ptev_se)}')
-
-        mp = harvest_df[(harvest_df['TFV'] == 51) & (harvest_df['ser'] == 621)]
-        if not mp.empty:
-            mp_mean = float(np.average(mp['mean_patch_size_2020'], weights=mp['total_area']))
-            print(f'  Maritime pine, Landes (TFV 51, SER 621): {mp_mean:.2f} ha$_\\mathrm{{D}}$ (area-weighted mean)')
-
-        rot = harvest_df.dropna(subset=[ROTATION_PERIOD_COLUMN])
-        rot = rot[rot[ROTATION_PERIOD_COLUMN] > 0]
-        if rot.empty:
-            return
-        nat_rot, nat_rot_se = national_area_weighted_mean_stderr(
-            rot, ROTATION_PERIOD_COLUMN, ROTATION_PERIOD_ERROR_COLUMN,
-        )
-        print('\nManuscript rotation period (years, 95% CI = 1.96×SE; figures use ±SE):')
-        print(f'  National: {_fmt_ci95(nat_rot, nat_rot_se, mean_nd=0)}')
-
-        # SER extremes used in the manuscript (harvest SER means).
-        if 'ser' in rot.columns:
-            ser_stats = []
-            for ser, g in rot.groupby('ser'):
-                st = _rotation_weighted_stats(g)
-                if np.isfinite(st['mean']) and st['mean'] > 0:
-                    ser_stats.append((ser, float(st['mean']), float(st['std'])))
-            if ser_stats:
-                ser_df = pd.DataFrame(ser_stats, columns=['ser', 'mean', 'se'])
-                # Attach NomSER when available from france_ser.
-                if 'france_ser' in globals() and 'NomSER' in france_ser.columns:
-                    names = france_ser[['ser_num', 'NomSER']].drop_duplicates('ser_num')
-                    ser_df = ser_df.merge(names, left_on='ser', right_on='ser_num', how='left')
-                else:
-                    ser_df['NomSER'] = ser_df['ser'].astype(str)
-                top = ser_df.nlargest(3, 'mean')
-                bot = ser_df.nsmallest(3, 'mean')
-                print('  Longest SERs:')
-                for _, r in top.iterrows():
-                    print(f"    {r['NomSER']}: {_fmt_ci95(r['mean'], r['se'], mean_nd=0)}")
-                print('  Shortest SERs:')
-                for _, r in bot.iterrows():
-                    print(f"    {r['NomSER']}: {_fmt_ci95(r['mean'], r['se'], mean_nd=0)}")
-
-        rot = rot.copy()
-        rot['TFV_group'] = rot['TFV'].map(dict_group_tfvs)
-        print('  TFV groups:')
-        for g in TFV_GROUP_ORDER:
-            grp = rot.loc[rot['TFV_group'] == g]
-            if grp.empty:
-                continue
-            st = _rotation_weighted_stats(grp)
-            print(f"    {g}: {_fmt_ci95(st['mean'], st['std'], mean_nd=0)}")
-
-        print('  Species:')
-        for tfv, label in (
-            (19, 'Poplar'), (51, 'Maritime pine'), (63, 'Larch'), (9, 'Beech'),
-        ):
-            grp = rot.loc[rot['TFV'] == tfv]
-            if grp.empty:
-                continue
-            st = _rotation_weighted_stats(grp)
-            print(f"    {label}: {_fmt_ci95(st['mean'], st['std'], mean_nd=0)}")
 
     # %%
 
@@ -1648,12 +1310,12 @@ def run_figures(
         elif 'relative' in column.lower() or 'relative' in title.lower():
             ticks = [actual_vmin, actual_vmax]
             labels = [f'{actual_vmin:.0f}%', f'{actual_vmax:.0f}%']
-        elif 'rotation' in column.lower() or 'rotation' in title.lower():
+        elif 'harvest_age' in column.lower() or 'harvest age' in title.lower():
             ticks = [actual_vmin, actual_vmax]
             labels = [f'{actual_vmin:.0f} yr', f'{actual_vmax:.0f} yr']
         elif 'lost_agb' in column.lower():
             ticks = [actual_vmin, actual_vmax]
-            labels = [f'{actual_vmin:.2f} TgC', f'{actual_vmax:.2f} TgC']
+            labels = [f'{actual_vmin:.2f} MtC', f'{actual_vmax:.2f} MtC']
         elif (
             column == RATE_X_SEVERITY_COLUMN
             or 'rate × severity' in title.lower()
@@ -2225,7 +1887,7 @@ def run_figures(
 
 
     def calculate_sum_stats(group, column, error_column=None, flux_kind=None):
-        """Sum of lost biomass (TgC) and the TFV-block SE of the row flux errors."""
+        """Sum of lost biomass (MtC) and the TFV-block SE of the row flux errors."""
         sum_val = np.sum(group[column])
         if column == 'lost_agb':
             err_val = se_lost_agb_national(group)
@@ -2344,16 +2006,16 @@ def run_figures(
         )
 
 
-    def _rotation_weighted_stats(group):
-        """Area-weighted mean ± TFV-block SE for rotation period."""
-        mean_work = _rotation_mean_subset(group)
+    def _harvest_age_weighted_stats(group):
+        """Area-weighted mean ± TFV-block SE for mean harvest age."""
+        mean_work = _harvest_age_mean_subset(group)
         if mean_work.empty or mean_work['total_area'].sum() <= 0:
             return pd.Series({'mean': np.nan, 'std': 0.0})
-        mean = float(np.average(mean_work[ROTATION_PERIOD_COLUMN], weights=mean_work['total_area']))
-        se_work = _rotation_positive_subset(group)
+        mean = float(np.average(mean_work[MEAN_HARVEST_AGE_COLUMN], weights=mean_work['total_area']))
+        se_work = _harvest_age_positive_subset(group)
         se = 0.0
         if not se_work.empty and se_work['total_area'].sum() > 0:
-            se = stderr_area_weighted_mean_tfv_block(se_work, ROTATION_PERIOD_ERROR_COLUMN)
+            se = stderr_area_weighted_mean_tfv_block(se_work, MEAN_HARVEST_AGE_ERROR_COLUMN)
         if not np.isfinite(se):
             se = 0.0
         return pd.Series({'mean': mean, 'std': float(se)})
@@ -2560,14 +2222,14 @@ def run_figures(
         ax.tick_params(labelsize=_AXIS_TICK_LABELSIZE)
         return combined
 
-    def plot_rotation_period_boxplot(ax, data, group_col, sorted_items, title, label_fn=None,
+    def plot_mean_harvest_age_boxplot(ax, data, group_col, sorted_items, title, label_fn=None,
                                      box_aspect=None, show_ylabel=True, si_style=False):
-        """Rotation period: area-weighted mean with error whiskers (± SE, not 95% CI)."""
-        required_cols = [group_col, ROTATION_PERIOD_COLUMN, 'total_area']
+        """Mean harvest age: area-weighted mean with error whiskers (± SE, not 95% CI)."""
+        required_cols = [group_col, MEAN_HARVEST_AGE_COLUMN, 'total_area']
         if TFV_COL in data.columns and TFV_COL not in required_cols:
             required_cols.append(TFV_COL)
-        if ROTATION_PERIOD_ERROR_COLUMN in data.columns:
-            required_cols = required_cols + [ROTATION_PERIOD_ERROR_COLUMN]
+        if MEAN_HARVEST_AGE_ERROR_COLUMN in data.columns:
+            required_cols = required_cols + [MEAN_HARVEST_AGE_ERROR_COLUMN]
         if any(col not in data.columns for col in required_cols):
             ax.set_axis_off()
             return None
@@ -2575,15 +2237,15 @@ def run_figures(
         work = data[required_cols].copy()
         work = work[
             work[group_col].notna()
-            & np.isfinite(work[ROTATION_PERIOD_COLUMN])
-            & (work[ROTATION_PERIOD_COLUMN] > 0)
+            & np.isfinite(work[MEAN_HARVEST_AGE_COLUMN])
+            & (work[MEAN_HARVEST_AGE_COLUMN] > 0)
         ]
         if work.empty:
             ax.set_axis_off()
             return None
 
         if sorted_items is None:
-            order = work.groupby(group_col)[ROTATION_PERIOD_COLUMN].median().sort_values(ascending=False).index.tolist()
+            order = work.groupby(group_col)[MEAN_HARVEST_AGE_COLUMN].median().sort_values(ascending=False).index.tolist()
         else:
             order = [item for item in sorted_items if item in set(work[group_col])]
         if not order:
@@ -2608,7 +2270,7 @@ def run_figures(
             horizontal=horizontal,
         )
         for pos, item, color in zip(positions, order, cat_colors):
-            st = _rotation_weighted_stats(work.loc[work[group_col] == item])
+            st = _harvest_age_weighted_stats(work.loc[work[group_col] == item])
             means.append(st['mean'])
             stds.append(st['std'])  # SE (figures); manuscript text uses 1.96×SE
             _plot_dot_whisker(ax, pos, st['mean'], st['std'], color, **dot_kw)
@@ -2619,9 +2281,9 @@ def run_figures(
             if box_aspect is not None:
                 ax.set_box_aspect(box_aspect)
         label_fs = _SI_YLABEL_FONTSIZE if si_style else 16
-        rotation_ylabel = 'Rotation period (years)'
+        harvest_age_ylabel = 'Mean harvest age (years)'
         if horizontal:
-            ax.set_xlabel(_format_si_xlabel(rotation_ylabel), fontsize=label_fs)
+            ax.set_xlabel(_format_si_xlabel(harvest_age_ylabel), fontsize=label_fs)
             ax.set_ylabel('')
             ax.set_yticks(positions)
             ax.set_ylim(*_si_tfv_category_ylim(len(order)))
@@ -2632,7 +2294,7 @@ def run_figures(
             return pd.DataFrame({group_col: order, 'mean': means, 'std': stds})
 
         if show_ylabel:
-            ax.set_ylabel(rotation_ylabel, fontsize=label_fs)
+            ax.set_ylabel(harvest_age_ylabel, fontsize=label_fs)
         else:
             ax.set_ylabel('')
             ax.tick_params(axis='y', labelleft=True)
@@ -3430,7 +3092,7 @@ def run_figures(
             if not mid_title or not (_is_populated_map_ax(ax_map_l) and _is_populated_map_ax(ax_map_r)):
                 continue
             pos_l, pos_r = ax_map_l.get_position(), ax_map_r.get_position()
-            x_mid = pos_l.x1 + (pos_r.x0 - pos_l.x1) * _ROTATION_MID_TITLE_X_FRAC
+            x_mid = pos_l.x1 + (pos_r.x0 - pos_l.x1) * _HARVEST_AGE_MID_TITLE_X_FRAC
             y_mid = 0.5 * (pos_l.y0 + pos_l.y1)
             fig.text(x_mid, y_mid, _wrap_row_title(mid_title), fontsize=16, rotation=90,
                      transform=fig.transFigure, va='center', ha='center')
@@ -3585,7 +3247,7 @@ def run_figures(
     _plot_ser_map(merged_natural, 'lost_agb', 'viridis', ax18,
                   'Natural total AGB loss', vmin=_vmin_agb, vmax=_vmax_agb)
     plot_combined_bar_chart_by_group(
-        ax20b, natural, harvest, 'lost_agb', 'Total AGB loss (TgC)',
+        ax20b, natural, harvest, 'lost_agb', 'Total AGB loss (MtC)',
         sorted_groups=natural_sorted_tfv_groups, show_ylabels=False,
         use_sum=True, error_column='lost_agb_error',
     )
@@ -3667,7 +3329,7 @@ def run_figures(
         **_si_kw,
     )
     plot_combined_bar_chart(
-        axes_tfv_sev[3], natural, harvest, 'lost_agb', 'Total AGB loss (TgC)',
+        axes_tfv_sev[3], natural, harvest, 'lost_agb', 'Total AGB loss (MtC)',
         sorted_tfvs=natural_sorted_tfvs_by_area, show_ylabels=False, show_yaxis=True,
         use_sum=True, error_column='lost_agb_error', si_style=True,
     )
@@ -3805,7 +3467,7 @@ def run_figures(
         _COMBINED_FIGURE_DIR,
         loss_csv=_kowalski_csv,
         grid_shp=_kowalski_grid,
-        france_shp=_FRANCE_OUTLINE_SHP,
+        france_shp=france_outline_shp,
         ser_shapefile=ser_shapefile,
         harvest_agg=forest_trend_harvest_agg,
         natural_agg=forest_trend_natural_agg,
@@ -3820,432 +3482,17 @@ def run_figures(
     _harvest_national = trend_ok.loc[trend_ok.agent == 'harvest']
     national_uncertainty_table = build_national_uncertainty_table(_nat_national, _harvest_national)
     print_national_uncertainty_table(national_uncertainty_table)
+    _nat_csv = trend_csv.parent / 'disturbance_national_uncertainty.csv'
+    national_uncertainty_table.to_csv(_nat_csv, index=False)
+    print(f'Wrote {_nat_csv}')
     plt.show()
 
     # %%
-    # ========== VARIANCE DECOMPOSITION: SER / TFV / agent (one-way only) ==========
-    # Equal weight per SER×TFV×agent cell. η² + MC 95% CI (row-level metric SEs) +
-    # permutation p. Region = SER. No stratified analysis.
-
-    _USE_AREA_WEIGHTS_DIST = False  # match Fig_age_distribution
-    _ETA_PERM_B_DIST = 999
-    _ETA_MC_B_DIST = 1000
-
-
-    def _wmean_d(vals, weights):
-        vals = np.asarray(vals, dtype=float)
-        weights = np.asarray(weights, dtype=float)
-        ok = np.isfinite(vals) & np.isfinite(weights) & (weights > 0)
-        if not np.any(ok):
-            return np.nan
-        return float(np.average(vals[ok], weights=weights[ok]))
-
-
-    def _wvar_d(vals, weights):
-        vals = np.asarray(vals, dtype=float)
-        weights = np.asarray(weights, dtype=float)
-        ok = np.isfinite(vals) & np.isfinite(weights) & (weights > 0)
-        if ok.sum() < 2:
-            return np.nan
-        v, w = vals[ok], weights[ok]
-        mu = np.average(v, weights=w)
-        return float(np.average((v - mu) ** 2, weights=w))
-
-
-    def _wstd_d(vals, weights):
-        v = _wvar_d(vals, weights)
-        return float(np.sqrt(v)) if np.isfinite(v) else np.nan
-
-
-    def _wcv_d(vals, weights):
-        mu = _wmean_d(vals, weights)
-        sd = _wstd_d(vals, weights)
-        if not (np.isfinite(mu) and np.isfinite(sd)) or mu == 0:
-            return np.nan
-        return float(sd / abs(mu))
-
-
-    def _eta2_arrays_d(y, w, g):
-        """Weighted η² from arrays."""
-        y = np.asarray(y, dtype=float)
-        w = np.asarray(w, dtype=float)
-        g = np.asarray(g)
-        ok = np.isfinite(y) & np.isfinite(w) & (w > 0) & pd.notna(g)
-        if ok.sum() < 2:
-            return np.nan
-        y, w, g = y[ok], w[ok], g[ok]
-        codes, uniques = pd.factorize(g, sort=False)
-        if len(uniques) < 2:
-            return np.nan
-        mu = float(np.average(y, weights=w))
-        sst = float(np.sum(w * (y - mu) ** 2))
-        if sst <= 0:
-            return np.nan
-        nlev = len(uniques)
-        sum_w = np.bincount(codes, weights=w, minlength=nlev).astype(float)
-        sum_wy = np.bincount(codes, weights=w * y, minlength=nlev).astype(float)
-        pos = sum_w > 0
-        mug = np.zeros(nlev, dtype=float)
-        mug[pos] = sum_wy[pos] / sum_w[pos]
-        ssb = float(np.sum(sum_w[pos] * (mug[pos] - mu) ** 2))
-        return float(ssb / sst)
-
-
-    def _eta2_weighted_d(df, ycol, gcol, wcol='area'):
-        return _eta2_arrays_d(df[ycol].to_numpy(), df[wcol].to_numpy(), df[gcol].to_numpy())
-
-
-    def _perm_p_eta2_d(df, ycol, gcol, wcol='area', n_perm=_ETA_PERM_B_DIST, rng=None):
-        rng = np.random.default_rng(0) if rng is None else rng
-        y = pd.to_numeric(df[ycol], errors='coerce').to_numpy(dtype=float)
-        w = pd.to_numeric(df[wcol], errors='coerce').to_numpy(dtype=float)
-        g0 = df[gcol].to_numpy().copy()
-        obs = _eta2_arrays_d(y, w, g0)
-        if not np.isfinite(obs):
-            return np.nan
-        n_ge = n_ok = 0
-        for _ in range(n_perm):
-            eta = _eta2_arrays_d(y, w, rng.permutation(g0))
-            if not np.isfinite(eta):
-                continue
-            n_ok += 1
-            if eta >= obs - 1e-15:
-                n_ge += 1
-        if n_ok == 0:
-            return np.nan
-        return float((1 + n_ge) / (1 + n_ok))
-
-
-    def _fmt_p_d(p):
-        if not np.isfinite(p):
-            return 'p=nan'
-        if p < 0.001:
-            return 'p<0.001'
-        return f'p={p:.3f}'
-
-
-    def _fmt_eta_ci_d(point, lo, hi, p=None):
-        if not np.isfinite(point):
-            base = '   nan'
-        elif not (np.isfinite(lo) and np.isfinite(hi)):
-            base = f'{point:5.1f}'
-        else:
-            base = f'{point:5.1f} [{lo:.1f}-{hi:.1f}]'
-        if p is None:
-            return base
-        return f'{base} {_fmt_p_d(p)}'
-
-
-    def _row_ratio_pct(slope, level):
-        slope = np.asarray(slope, dtype=float)
-        level = np.asarray(level, dtype=float)
-        out = np.full(slope.shape, np.nan, dtype=float)
-        ok = np.isfinite(slope) & np.isfinite(level) & (level > 0)
-        out[ok] = 100.0 * slope[ok] / level[ok]
-        return out
-
-
-    def _row_ratio_pct_se(slope, slope_se, level, level_se, cov=None):
-        """Delta-method SE of 100 × slope / level."""
-        slope = np.asarray(slope, dtype=float)
-        slope_se = np.asarray(slope_se, dtype=float)
-        level = np.asarray(level, dtype=float)
-        level_se = np.asarray(level_se, dtype=float)
-        if cov is None:
-            cov = np.zeros_like(slope)
-        else:
-            cov = np.asarray(cov, dtype=float)
-        out = np.full(slope.shape, np.nan, dtype=float)
-        ok = (
-            np.isfinite(slope) & np.isfinite(slope_se) & np.isfinite(level) & np.isfinite(level_se)
-            & (level > 0) & (slope_se >= 0) & (level_se >= 0)
-        )
-        s, ss, L, sL, c = slope[ok], slope_se[ok], level[ok], level_se[ok], cov[ok]
-        cap = ss * sL
-        c = np.clip(c, -cap, cap)
-        var = (
-            (100.0 / L) ** 2 * ss ** 2
-            + (100.0 * s / L ** 2) ** 2 * sL ** 2
-            - 2.0 * (100.0 / L) * (100.0 * s / L ** 2) * c
-        )
-        out[ok] = np.sqrt(np.maximum(var, 0.0))
-        return out
-
-
-    # --- Build analysis table (SER × TFV × agent) ---
-    _vd = trend_ok.copy()
-    if 'aggregation_level' in _vd.columns:
-        _vd = _vd.loc[_vd['aggregation_level'].astype(str) == 'ser'].copy()
-
-    _vd['TFV'] = pd.to_numeric(_vd['TFV'], errors='coerce')
-    _vd = _vd.loc[_vd['TFV'].notna() & (_vd['TFV'] > 0) & (_vd['TFV'] < 500) & (_vd['TFV'] != 400)].copy()
-    _vd['TFV'] = _vd['TFV'].astype(int)
-    _vd['ser'] = pd.to_numeric(_vd['ser'], errors='coerce')
-    _vd = _vd.loc[_vd['ser'].notna()].copy()
-    _vd['ser'] = _vd['ser'].astype(int)
-    _vd['agent'] = _vd['agent'].astype(str).str.strip().str.lower()
-    _vd = _vd.loc[_vd['agent'].isin(('harvest', 'natural'))].copy()
-
-    _vd['d_area_evolution_perc'] = _row_ratio_pct(_vd['slope_pp'], _vd['d_area_2020_perc'])
-    _vd['d_area_evolution_perc_se'] = _row_ratio_pct_se(
-        _vd['slope_pp'], _vd['slope_pp_err'],
-        _vd['d_area_2020_perc'], _vd['d_area_2020_error_perc'],
-        cov=_vd.get('d_area_level_slope_cov'),
-    )
-    _vd['mean_patch_size_evolution_perc'] = _row_ratio_pct(
-        _vd['slope_patch_ha'], _vd['mean_patch_size_2020'],
-    )
-    _vd['mean_patch_size_evolution_perc_se'] = _row_ratio_pct_se(
-        _vd['slope_patch_ha'], _vd['slope_patch_ha_err'],
-        _vd['mean_patch_size_2020'], _vd['mean_patch_size_2020_error'],
-        cov=_vd.get('patch_level_slope_cov'),
-    )
-
-    _vd['tfv_group'] = _vd['TFV'].map(dict_group_tfvs)
-    _vd['area'] = pd.to_numeric(_vd['total_area'], errors='coerce').fillna(0.0)
-    _vd = _vd.loc[_vd['area'] > 0].copy()
-    if not _USE_AREA_WEIGHTS_DIST:
-        _vd['area'] = 1.0
-    # Include open/new-cut TFVs 401–403 (mapped into Mixed_*); TFV 400 already dropped.
-    _vd = _vd.loc[_vd['tfv_group'].isin(TFV_GROUP_ORDER)].copy()
-    _vd = _vd.drop_duplicates(subset=['ser', 'TFV', 'agent'], keep='first')
-
-    # Value column → row-level SE column for MC
-    _DIST_SE_MAP = {
-        'd_area_2020_perc': 'd_area_2020_error_perc',
-        'd_area_evolution_perc': 'd_area_evolution_perc_se',
-        'mean_patch_size_2020': 'mean_patch_size_2020_error',
-        'mean_patch_size_evolution_perc': 'mean_patch_size_evolution_perc_se',
-        AGBD_LOSS_COLUMN: f'{AGBD_LOSS_COLUMN}_error',
-        RELATIVE_AGBD_LOSS_COLUMN: f'{RELATIVE_AGBD_LOSS_COLUMN}_error',
-        RATE_X_SEVERITY_COLUMN: RATE_X_SEVERITY_ERROR_COLUMN,
-        ROTATION_PERIOD_COLUMN: ROTATION_PERIOD_ERROR_COLUMN,
-    }
-    _DIST_NONNEG = {
-        'd_area_2020_perc', 'mean_patch_size_2020', AGBD_LOSS_COLUMN,
-        RELATIVE_AGBD_LOSS_COLUMN, RATE_X_SEVERITY_COLUMN, ROTATION_PERIOD_COLUMN,
-    }
-
-    _DIST_PARAM_SPEC = [
-        ('d_area_2020_perc', 'Rate', True),
-        ('d_area_evolution_perc', 'Rate trend', True),
-        ('mean_patch_size_2020', 'Patch size', True),
-        ('mean_patch_size_evolution_perc', 'Patch trend', True),
-        (AGBD_LOSS_COLUMN, 'Abs. severity', True),
-        (RELATIVE_AGBD_LOSS_COLUMN, 'Rel. severity', True),
-        (RATE_X_SEVERITY_COLUMN, 'AGB intensity', True),
-        (ROTATION_PERIOD_COLUMN, 'Rotation', False),
-    ]
-    _DIST_PARAM_SPEC = [(c, n, a) for c, n, a in _DIST_PARAM_SPEC if c in _vd.columns]
-    _dist_param_names = [n for _, n, _ in _DIST_PARAM_SPEC]
-
-    print("\n" + "=" * 90)
-    print(
-        "ONE-WAY η² — SER vs TFV vs agent  "
-        + ("(AREA-WEIGHTED)" if _USE_AREA_WEIGHTS_DIST else "(EQUAL WEIGHT PER CELL)")
-    )
-    print("=" * 90)
-    print(
-        f"n={len(_vd)} SER×TFV×agent cells | "
-        f"harvest={(_vd['agent'] == 'harvest').sum()} | "
-        f"natural={(_vd['agent'] == 'natural').sum()} | "
-        f"MC B={_ETA_MC_B_DIST} | perm. p B={_ETA_PERM_B_DIST}"
-    )
-    print("One-way η² do not partition variance additively across factors.")
-
-    # --- One-way point η² ---
-    _dist_variance_decomp = []
-    for param, pname, agent_ok in _DIST_PARAM_SPEC:
-        eta_s = _eta2_weighted_d(_vd, param, 'ser', 'area')
-        eta_t = _eta2_weighted_d(_vd, param, 'TFV', 'area')
-        eta_a = _eta2_weighted_d(_vd, param, 'agent', 'area') if agent_ok else np.nan
-        _dist_variance_decomp.append({
-            'parameter': pname,
-            'column': param,
-            'agent_factor': agent_ok,
-            'eta2_ser_pct': 100.0 * eta_s if np.isfinite(eta_s) else np.nan,
-            'eta2_tfv_pct': 100.0 * eta_t if np.isfinite(eta_t) else np.nan,
-            'eta2_agent_pct': 100.0 * eta_a if np.isfinite(eta_a) else np.nan,
-        })
-    dist_variance_df = pd.DataFrame(_dist_variance_decomp)
-    _avg_s = dist_variance_df['eta2_ser_pct'].mean()
-    _avg_t = dist_variance_df['eta2_tfv_pct'].mean()
-    _avg_a = dist_variance_df.loc[dist_variance_df['agent_factor'], 'eta2_agent_pct'].mean()
-
-    # --- MC 95% CI from row-level metric SEs ---
-    print("\nRunning MC CI for η²...")
-    _mc_keys = []
-    for _, pname, agent_ok in _DIST_PARAM_SPEC:
-        _mc_keys += [f'SER::{pname}', f'TFV::{pname}']
-        if agent_ok:
-            _mc_keys.append(f'agent::{pname}')
-    _mc_store = {k: [] for k in _mc_keys}
-    _mc_mean_ser, _mc_mean_tfv, _mc_mean_agent = [], [], []
-
-    _se_cols = {}
-    for param, pname, _ in _DIST_PARAM_SPEC:
-        se_c = _DIST_SE_MAP.get(param)
-        if se_c and se_c in _vd.columns:
-            _se_cols[param] = np.maximum(
-                pd.to_numeric(_vd[se_c], errors='coerce').fillna(0.0).to_numpy(dtype=float), 0.0
-            )
-        else:
-            _se_cols[param] = np.zeros(len(_vd), dtype=float)
-            print(f'  WARNING: no SE for {param!r} — MC uses σ=0')
-
-    _y0 = {
-        param: pd.to_numeric(_vd[param], errors='coerce').to_numpy(dtype=float)
-        for param, _, _ in _DIST_PARAM_SPEC
-    }
-    _w_mc = _vd['area'].to_numpy(dtype=float)
-    _ser_mc = _vd['ser'].to_numpy()
-    _tfv_mc = _vd['TFV'].to_numpy()
-    _agent_mc = _vd['agent'].to_numpy()
-    _rng_mc = np.random.default_rng(0)
-
-    for _b in range(_ETA_MC_B_DIST):
-        _draw_ser, _draw_tfv, _draw_agent = [], [], []
-        for param, pname, agent_ok in _DIST_PARAM_SPEC:
-            yp = _y0[param] + _rng_mc.normal(0.0, _se_cols[param])
-            if param in _DIST_NONNEG:
-                yp = np.maximum(yp, 0.0)
-            if param == RELATIVE_AGBD_LOSS_COLUMN:
-                yp = np.clip(yp, 0.0, 100.0)
-            eta_s = _eta2_arrays_d(yp, _w_mc, _ser_mc)
-            eta_t = _eta2_arrays_d(yp, _w_mc, _tfv_mc)
-            if np.isfinite(eta_s):
-                v = 100.0 * eta_s
-                _mc_store[f'SER::{pname}'].append(v)
-                _draw_ser.append(v)
-            if np.isfinite(eta_t):
-                v = 100.0 * eta_t
-                _mc_store[f'TFV::{pname}'].append(v)
-                _draw_tfv.append(v)
-            if agent_ok:
-                eta_a = _eta2_arrays_d(yp, _w_mc, _agent_mc)
-                if np.isfinite(eta_a):
-                    v = 100.0 * eta_a
-                    _mc_store[f'agent::{pname}'].append(v)
-                    _draw_agent.append(v)
-        if _draw_ser:
-            _mc_mean_ser.append(float(np.mean(_draw_ser)))
-        if _draw_tfv:
-            _mc_mean_tfv.append(float(np.mean(_draw_tfv)))
-        if _draw_agent:
-            _mc_mean_agent.append(float(np.mean(_draw_agent)))
-
-    _mc_ci = {
-        k: (
-            float(np.nanpercentile(v, 2.5)),
-            float(np.nanpercentile(v, 97.5)),
-        ) if len(v) else (np.nan, np.nan)
-        for k, v in _mc_store.items()
-    }
-
-
-    def _mc_mean_ci(vals):
-        if not vals:
-            return np.nan, np.nan
-        lo, hi = np.nanpercentile(vals, [2.5, 97.5])
-        return float(lo), float(hi)
-
-    # --- Permutation p ---
-    print("Running permutation tests for η²...")
-    _rng_perm_d = np.random.default_rng(42)
-    _eta_p_d = {}
-    for param, pname, agent_ok in _DIST_PARAM_SPEC:
-        _eta_p_d[f'SER::{pname}'] = _perm_p_eta2_d(_vd, param, 'ser', rng=_rng_perm_d)
-        _eta_p_d[f'TFV::{pname}'] = _perm_p_eta2_d(_vd, param, 'TFV', rng=_rng_perm_d)
-        _eta_p_d[f'agent::{pname}'] = (
-            _perm_p_eta2_d(_vd, param, 'agent', rng=_rng_perm_d) if agent_ok else np.nan
-        )
-
-    # Slim table: η² + MC CI + p only
-    _vd_slim = []
-    for _, row in dist_variance_df.iterrows():
-        p = row['parameter']
-        s_lo, s_hi = _mc_ci.get(f'SER::{p}', (np.nan, np.nan))
-        t_lo, t_hi = _mc_ci.get(f'TFV::{p}', (np.nan, np.nan))
-        a_lo, a_hi = _mc_ci.get(f'agent::{p}', (np.nan, np.nan))
-        _vd_slim.append({
-            'parameter': p,
-            'agent_factor': row['agent_factor'],
-            'eta2_ser_pct': row['eta2_ser_pct'],
-            'eta2_ser_lo': s_lo,
-            'eta2_ser_hi': s_hi,
-            'p_ser': _eta_p_d.get(f'SER::{p}', np.nan),
-            'eta2_tfv_pct': row['eta2_tfv_pct'],
-            'eta2_tfv_lo': t_lo,
-            'eta2_tfv_hi': t_hi,
-            'p_tfv': _eta_p_d.get(f'TFV::{p}', np.nan),
-            'eta2_agent_pct': row['eta2_agent_pct'],
-            'eta2_agent_lo': a_lo if row['agent_factor'] else np.nan,
-            'eta2_agent_hi': a_hi if row['agent_factor'] else np.nan,
-            'p_agent': _eta_p_d.get(f'agent::{p}', np.nan),
-        })
-    dist_variance_df = pd.DataFrame(_vd_slim)
-
-    print("\nη² (%)  [95% MC]  permutation p (one-way):")
-    print(f"{'parameter':<14} {'SER':>28} {'TFV':>28} {'agent':>28}")
-    for _, row in dist_variance_df.iterrows():
-        a_cell = (
-            _fmt_eta_ci_d(row['eta2_agent_pct'], row['eta2_agent_lo'], row['eta2_agent_hi'], row['p_agent'])
-            if row['agent_factor'] else 'n/a'
-        )
-        print(
-            f"{row['parameter']:<14} "
-            f"{_fmt_eta_ci_d(row['eta2_ser_pct'], row['eta2_ser_lo'], row['eta2_ser_hi'], row['p_ser']):>28} "
-            f"{_fmt_eta_ci_d(row['eta2_tfv_pct'], row['eta2_tfv_lo'], row['eta2_tfv_hi'], row['p_tfv']):>28} "
-            f"{a_cell:>28}"
-        )
-    # Mean-row CI = percentiles of (mean η² across params) per MC draw — not mean of CIs
-    _s_lo, _s_hi = _mc_mean_ci(_mc_mean_ser)
-    _t_lo, _t_hi = _mc_mean_ci(_mc_mean_tfv)
-    _a_lo, _a_hi = _mc_mean_ci(_mc_mean_agent)
-    print(
-        f"{'Mean':<14} "
-        f"{_fmt_eta_ci_d(_avg_s, _s_lo, _s_hi):>28} "
-        f"{_fmt_eta_ci_d(_avg_t, _t_lo, _t_hi):>28} "
-        f"{_fmt_eta_ci_d(_avg_a, _a_lo, _a_hi):>28}"
-    )
-    _who_bits = [('SER', _avg_s), ('TFV', _avg_t)]
-    if np.isfinite(_avg_a):
-        _who_bits.append(('agent', _avg_a))
-    _who_bits.sort(key=lambda x: -x[1] if np.isfinite(x[1]) else -np.inf)
-    print("→ One-way mean η² ranking: " + " > ".join(f"{k} ({v:.1f}%)" for k, v in _who_bits))
-    print('p-values: permutation test of factor labels. Rotation: agent η² skipped.')
-
-    dist_variance_paper_summary = {
-        'n_cells': int(len(_vd)),
-        'area_weighted': bool(_USE_AREA_WEIGHTS_DIST),
-        'avg_eta2_ser_pct': float(_avg_s),
-        'avg_eta2_ser_lo': float(_s_lo) if np.isfinite(_s_lo) else np.nan,
-        'avg_eta2_ser_hi': float(_s_hi) if np.isfinite(_s_hi) else np.nan,
-        'avg_eta2_tfv_pct': float(_avg_t),
-        'avg_eta2_tfv_lo': float(_t_lo) if np.isfinite(_t_lo) else np.nan,
-        'avg_eta2_tfv_hi': float(_t_hi) if np.isfinite(_t_hi) else np.nan,
-        'avg_eta2_agent_pct': float(_avg_a) if np.isfinite(_avg_a) else np.nan,
-        'avg_eta2_agent_lo': float(_a_lo) if np.isfinite(_a_lo) else np.nan,
-        'avg_eta2_agent_hi': float(_a_hi) if np.isfinite(_a_hi) else np.nan,
-    }
-    print("\ndist_variance_df / dist_variance_paper_summary ready "
-          "(η² + 95% MC CI + permutation p; one-way only).")
-    # %%
+    # η² (one-way and two-way, with gap-filled rows excluded per metric) is computed
+    # only by 07_compute_variance.py → disturbance_eta2_variance.csv / _twoway.csv.
 
     return figure_dir
 
 
 if __name__ == "__main__":
-    import argparse
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("trend_csv", type=Path)
-    p.add_argument("figure_dir", type=Path)
-    p.add_argument("--ser-shapefile", type=Path, default=None)
-    p.add_argument("--greco-shapefile", type=Path, default=None)
-    args = p.parse_args()
-    kw = {}
-    if args.ser_shapefile:
-        kw["ser_shapefile"] = args.ser_shapefile
-    if args.greco_shapefile:
-        kw["greco_shapefile"] = args.greco_shapefile
-    run_figures(args.trend_csv, args.figure_dir, **kw)
+    raise SystemExit("Run 05_make_figures.py --config config.yaml (paths come from the config).")

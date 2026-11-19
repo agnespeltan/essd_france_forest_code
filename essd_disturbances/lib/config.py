@@ -25,6 +25,7 @@ def load_config(path: str | Path) -> dict[str, Any]:
     cfg.setdefault("year_start", 1999)
     cfg.setdefault("year_end", 2024)
     cfg.setdefault("min_years_ser", 10)
+    # min_years_mk is unused (kept for old YAMLs); MK gates on n_years_positive >= min_years_ser
     cfg.setdefault("min_years_mk", 4)
     cfg.setdefault("before_range", "2021-2024")
     cfg.setdefault("after_range", "2016-2019")
@@ -43,6 +44,7 @@ def load_config(path: str | Path) -> dict[str, Any]:
         {
             "patches": "disturbance_patches.parquet",
             "agb_stats": "disturbance_agb_stats.parquet",
+            "forest_area": "forest_tfv_ser_area.parquet",
             "trends": "disturbance_trends.csv",
             "severity": "disturbance_severity.csv",
         },
@@ -53,6 +55,10 @@ def load_config(path: str | Path) -> dict[str, Any]:
     cfg.setdefault("patches_parquet", str(out_dir / outs.get("patches", "disturbance_patches.parquet")))
     cfg.setdefault(
         "agb_stats_parquet", str(out_dir / outs.get("agb_stats", "disturbance_agb_stats.parquet"))
+    )
+    cfg.setdefault(
+        "forest_area_parquet",
+        str(out_dir / outs.get("forest_area", "forest_tfv_ser_area.parquet")),
     )
     cfg["_config_path"] = str(config_path)
     return cfg

@@ -5,7 +5,7 @@ Default keep years are 2019–2021 → writes
 ``output_dir/latest_disturbance_year_le2021_30m.tif`` from
 ``rasters.agent_multilayer`` (years ≤ 2021 only).
 
-Used by ``03_fix_nodata`` so age==0 is kept for clearcuts in 2019–2021.
+Used by ``03_finalize_age_map`` so age==0 is kept for clearcuts in 2019–2021.
 
 Example::
 

@@ -2,10 +2,6 @@
 
 National forest age from AGB via Chapman–Richards inversion, GRECO soft blending, and paper figures.
 
-## Data
-
-Published age GeoTIFFs (`forest_age_q50/q25/q75.tif`) are in the companion Zenodo data deposit: [10.5281/zenodo.23499335](https://doi.org/10.5281/zenodo.23499335). See the [repository root README](../README.md).
-
 ## Terms
 
 | Name | Meaning |
@@ -26,21 +22,20 @@ AGB + TFV + GRECO shp + growth_curves CSV + agent stack
         ├─► 00_build_greco_weights.py           →  greco_{A..K}_weights.tif
         ├─► 00b_materialize_disturbance_year.py →  latest_disturbance_year_le2021_30m.tif
         │                                         (years ≤ 2021; auto-run by 03 if missing)
-        └─► 01_build_age_tiles.py               →  Age_tiles/forest_age_greco_{id}_q{q}.tif
+        └─► 01_build_age_tiles.py               →  Age_tiles/forest_age_greco_{id}_{label}.tif
                  │
                  ▼
-           02_blend_weighted_age.py             →  forest_age_blend_q{q}.tif
+           02_blend_weighted_age.py             →  forest_age_blend_{label}.tif
                  │
                  ▼
-           03_fix_nodata.py                   →  forest_age_q{q}.tif
+           03_finalize_age_map.py               →  forest_age_{label}.tif
                  │   (keep age==0 if disturbance year ∈ {2019,2020,2021})
-                 ▼
-           03b_build_summaries.py               →  forest_age_q{q}_hist.csv + _5km.tif
-                                                    + _cv_5km.tif (spatial CV)
+                 │                                  + forest_age_{label}_hist.csv, _5km.tif,
+                 │                                    _cv_5km.tif (spatial CV)
                  ▼
            04_make_figures.py                   →  Fig. 3, SI3–SI6 PNGs
 # or: 05_run_all.py  (00→03; optional --with-figures → 04)
-#     03b is separate — run before 04 when hists / 5 km / CV need refresh
+# {label}: central (q50), upper (q25, older), lower (q75, younger)
 ```
 
 ### Local run
@@ -69,8 +64,7 @@ python3 00_build_greco_weights.py
 python3 00b_materialize_disturbance_year.py   # optional; 03 auto-builds if missing
 python3 01_build_age_tiles.py                 # all GRECOs sequentially
 python3 02_blend_weighted_age.py
-python3 03_fix_nodata.py
-python3 03b_build_summaries.py                # hist + 5 km median + spatial CV
+python3 03_finalize_age_map.py                # fix nodata + hist, 5 km median, spatial CV
 python3 04_make_figures.py
 ```
 
@@ -104,9 +98,7 @@ See `config.example.yaml`. Same roots as the other `essd_*` packages:
 
 **00b disturbance year:** from the agent multilayer, latest year with **year ≤ 2021** → `latest_disturbance_year_le2021_30m.tif` (also: `essd_disturbances/00_materialize_latest_year.py --max-year 2021`).
 
-**03 fix:** force age 0 → nodata where AGB is 0 and latest disturbance year is **not** in `disturbance_keep_years` (default `{2019, 2020, 2021}`); preserves those recent clearcuts. Auto-builds the le2021 year map if missing.
-
-**03b summaries:** from each fixed age map → `forest_age_q{q}_hist.csv`, median `*_5km.tif`, and spatial CV `*_cv_5km.tif` (σ/μ of 30 m ages > 0 inside each 5 km cell).
+**03 finalize:** force age 0 → nodata where AGB is 0 and latest disturbance year is **not** in `disturbance_keep_years` (default `{2019, 2020, 2021}`); preserves those recent clearcuts. Auto-builds the le2021 year map if missing. Then, from the fixed map → `forest_age_{label}_hist.csv`, median `*_5km.tif`, and spatial CV `*_cv_5km.tif` (σ/μ of 30 m ages > 0 inside each 5 km cell).
 
 **04 figures:** self-contained plots adapted from `Figures/Fig_age_distribution.py` (does not call that script). Map panels mask 5 km cells with BD Forêt forest fraction ≤ 10% (`figures.tree_cover`); age maps keep age==0.
 
@@ -118,7 +110,7 @@ See `config.example.yaml`. Same roots as the other `essd_*` packages:
 | `Figure_SI5_age_kde_by_greco.png` | SI5 |
 | `Figure_SI6_age_bubbles_species_gami_diff.png` | SI6 |
 
-SI3 needs `figures.age_cv_5km` (from 03b) and `figures.ours_minus_gami_5km`. NFI CSVs are optional (`nfi_aires_age`, `nfi_surf_esspre`, `nfi_surf_greco`) — omit → Fig. 3a without NFI; SI4/SI5 skipped. SI4/SI5 GAMI KDEs need `gami_hist_by_tfv` / `gami_hist_by_greco` (optional `_lo`/`_hi`). SI6 panel (b) needs `figures.ours_minus_gami_tfv_csv` (CSV stats or diff-hist NPZ).
+SI3 needs `figures.age_cv_5km` (from 03) and `figures.ours_minus_gami_5km`. NFI CSVs are optional (`nfi_aires_age`, `nfi_surf_esspre`, `nfi_surf_greco`) — omit → Fig. 3a without NFI; SI4/SI5 skipped. SI4/SI5 GAMI KDEs need `gami_hist_by_tfv` / `gami_hist_by_greco` (optional `_lo`/`_hi`). SI6 panel (b) needs `figures.ours_minus_gami_tfv_csv` (CSV stats or diff-hist NPZ).
 
 ## Layout
 
@@ -141,3 +133,9 @@ Helpers live under `lib/` (not a pip package).
 | `02` blend | Keeps all age + weight GeoTIFFs open across spatial tiles |
 
 **01** only computes where `greco_*_weights > 0` — run **00** first (or point `outputs.weights_dir` at existing weights).
+
+## Published file names
+
+Output files are named by the growth-curve quantile they come from (`quantile` in the config, see `lib/naming.py`): `forest_age_central.tif` (q50), `forest_age_upper.tif` (q25) and `forest_age_lower.tif` (q75), with the same labels for `_hist.csv`, `_5km.tif` and `_cv_5km.tif`. The same names are used in the Zenodo `age_map.zip` (`essd_package/build_deposit.py --age-map`).
+
+The 25th-percentile AGB curve lies below the others, so it reaches a pixel's observed AGB later and gives the **older** age. The two maps bound the effect of between-stand AGB variability on the estimated age; they are not a pixel-level confidence interval.

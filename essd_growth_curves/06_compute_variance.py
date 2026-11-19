@@ -2,8 +2,9 @@
 """Compute equal-weight one-way η² for growth-curve metrics (AGBmax, R30, t50).
 
 Factors: species category (TFV) vs ecological region (GRECO letter).
-Gap-filled curves excluded by default. 95% CIs: Monte Carlo perturbation within
-each value's 25th–75th percentile range (n=1000). Significance: label permutation
+Gap-filled curves excluded by default. 95% CIs: Monte Carlo draws from each value's
+bootstrap fit SE (``--mc bootstrap``, default; needs 07_bootstrap_curves.py --merge) or
+uniform within its 25th–75th percentile curves (``--mc envelope``, former method) (n=1000). Significance: label permutation
 (n=1000).
 
 Example::
@@ -24,7 +25,7 @@ if str(ROOT) not in sys.path:
 
 from lib.config import load_config
 from lib.paths import output_dir
-from lib.variance.eta2 import compute_eta2_table, format_eta2_paragraph
+from lib.variance.eta2 import compute_eta2_table, compute_eta2_twoway, format_eta2_paragraph
 
 
 def main() -> None:
@@ -34,6 +35,8 @@ def main() -> None:
     p.add_argument("--n-boot", type=int, default=None, help=argparse.SUPPRESS)  # alias
     p.add_argument("--n-perm", type=int, default=1000, help="Permutations for p-values")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--mc", choices=("bootstrap", "envelope"), default="bootstrap",
+                   help="Source of the per-value uncertainty for the MC CI")
     p.add_argument(
         "--include-gap-filled",
         action="store_true",
@@ -57,7 +60,7 @@ def main() -> None:
     n_mc = args.n_mc if args.n_boot is None else args.n_boot
     print(
         f"Computing η² (equal weight, include_gap_filled={include_gap}, "
-        f"n_mc={n_mc}, n_perm={args.n_perm})…"
+        f"n_mc={n_mc}, n_perm={args.n_perm}, mc={args.mc})…"
     )
     table = compute_eta2_table(
         cfg,
@@ -65,6 +68,7 @@ def main() -> None:
         n_mc=n_mc,
         n_perm=args.n_perm,
         seed=args.seed,
+        mc=args.mc,
     )
 
     out = args.out
@@ -76,6 +80,21 @@ def main() -> None:
     table.to_csv(out, index=False)
     print(f"Wrote {out}")
 
+    two = compute_eta2_twoway(
+        cfg, include_gap_filled=include_gap, n_mc=n_mc, seed=args.seed, mc=args.mc
+    )
+    two_out = out.with_name(out.stem.replace("_variance", "") + "_twoway.csv")
+    two.to_csv(two_out, index=False)
+    print(f"Wrote {two_out}")
+    print("\n=== Two-way partition, species vs region (% of variance, 95% MC CI) ===")
+    for _, r in two.iterrows():
+        print(
+            f"  {r['metric_label']:7s} unique species {r['unique_species']:.1f} "
+            f"[{r['unique_species_lo']:.1f}, {r['unique_species_hi']:.1f}] | unique region "
+            f"{r['unique_region']:.1f} [{r['unique_region_lo']:.1f}, {r['unique_region_hi']:.1f}] | "
+            f"shared {r['shared']:.1f} | residual {r['residual']:.1f}  (adj: species "
+            f"{r['unique_species_adj']:.1f}, region {r['unique_region_adj']:.1f})"
+        )
     print("\n=== η² summary (% of variance; ± = half 95% MC CI) ===")
     for _, r in table.iterrows():
         print(

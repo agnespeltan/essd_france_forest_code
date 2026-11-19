@@ -2,7 +2,7 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23503540.svg)](https://doi.org/10.5281/zenodo.23503540)
 
-Python pipelines for species- and region-specific **growth curves**, **forest age**, **disturbance** metrics, and **harvest rotation periods** for metropolitan French forests (30 m, reference year 2020). Companion code to Pellissier-Tanon et al., *Earth System Science Data* (submitted).
+Python pipelines for species- and region-specific **growth curves**, **forest age**, **disturbance** metrics, and **mean harvest age** for metropolitan French forests (30 m, reference year 2020). Companion code to Pellissier-Tanon et al., *Earth System Science Data* (submitted).
 
 **Code DOI:** [10.5281/zenodo.23503540](https://doi.org/10.5281/zenodo.23503540) · **GitHub:** https://github.com/agnespeltan/essd_france_forest_code
 
@@ -11,18 +11,20 @@ Python pipelines for species- and region-specific **growth curves**, **forest ag
 | Package | Role |
 |---------|------|
 | [`essd_growth_curves`](essd_growth_curves/) | EFDA/GAMI stats → Chapman–Richards AGB–age curves (GRECO × TFV) |
-| [`essd_age_maps`](essd_age_maps/) | Invert CR curves → 30 m age map (median / p25 / p75) |
+| [`essd_age_maps`](essd_age_maps/) | Invert CR curves → 30 m age map (central / upper / lower) |
 | [`essd_disturbances`](essd_disturbances/) | Rates, patch sizes, AGB-loss severity (TFV × SER × agent) |
-| [`essd_rotation`](essd_rotation/) | NFI harvest ages → rotation periods on disturbance strata |
+| [`essd_harvest_age`](essd_harvest_age/) | NFI harvest ages → mean harvest age on disturbance strata (formerly `essd_rotation`) |
+| [`essd_package`](essd_package/) | Adds species and region codes to the pipeline tables, zips and checks the Zenodo deposit |
 
-Each package has `config.example.yaml`, `requirements.txt`, and its own README. Copy the example config to `config.yaml` and set local paths (inputs are not redistributed).
+Each package has `config.example.yaml`, `requirements.txt`, and its own README. Copy the example config to `config.yaml` and set local paths (inputs are not redistributed). [`ESSD_CODE_FILES.md`](ESSD_CODE_FILES.md) lists every file and what it does.
 
 ## Data (Zenodo)
 
 Published products (CSVs + age GeoTIFFs) are on Zenodo (separate deposit from this code):
 
 - **DOI:** [10.5281/zenodo.23499335](https://doi.org/10.5281/zenodo.23499335)
-- Archives: `growth_curves.zip`, `age_map.zip`, `disturbance_rate_patches.zip`, `disturbance_severity.zip`, `rotation_periods.zip`, plus `tfv_codes.csv` / `ser_codes.csv`
+- Archives (version 2): `growth_curves.zip`, `age_map.zip`, `disturbance_rate_patches.zip`, `disturbance_severity.zip`, `mean_harvest_age.zip`, plus `tfv_codes.csv` / `ser_codes.csv`
+- Version 2 matches this code. Its README lists the changes from version 1.
 
 **Data license:** CC BY 4.0
 
@@ -48,4 +50,4 @@ Laboratoire des Sciences du Climat et de l’Environnement (LSCE), France
 ## License
 
 This repository is released under the [MIT License](LICENSE).  
-Redistributed lookup tables under `essd_rotation/data/` are small species-mapping helpers for the pipeline (not NFI microdata).
+Redistributed lookup tables under `essd_harvest_age/data/` are small species-mapping helpers for the pipeline (not NFI microdata).

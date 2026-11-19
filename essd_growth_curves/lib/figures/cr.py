@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.optimize import curve_fit
 
-from lib.figures.constants import RS_CARBON_METRICS
+from lib.figures.constants import RS_CARBON
 
 
 def chapman_richards(x, a, b, c, d=0.0):
@@ -56,7 +56,7 @@ def param_d(row, q: str) -> float:
     return 0.0
 
 
-def rs_metrics(a, b, c, d=0.0, carbon: float = RS_CARBON_METRICS) -> dict | None:
+def rs_metrics(a, b, c, d=0.0, carbon: float = RS_CARBON) -> dict | None:
     if not np.all(np.isfinite([a, b, c, d])):
         return None
     return {

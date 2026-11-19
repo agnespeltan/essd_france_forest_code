@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 from lib.config import load_config
 from lib.raster.agent_stack import materialize_from_config
 from lib.raster.agb_stats import build_agb_stats
+from lib.raster.forest_area import build_forest_area
 from lib.raster.patches import build_patches
 from lib.severity.pipeline import compute_severity
 from lib.trends.pipeline import fit_trends
@@ -47,6 +48,8 @@ def main() -> None:
         print(agent_out)
         print("=== 01 build patches ===")
         print(build_patches(cfg, max_polygons=args.max_polygons))
+        print("=== 01b build forest area (mask census) ===")
+        print(build_forest_area(cfg))
     print("=== 02 fit trends ===")
     print(fit_trends(cfg))
     if not args.skip_build:

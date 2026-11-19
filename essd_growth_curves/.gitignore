@@ -10,5 +10,3 @@ venv/
 # Scratch
 *.log
 *.tmp
-
-_out/

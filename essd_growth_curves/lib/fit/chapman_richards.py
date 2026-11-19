@@ -23,6 +23,27 @@ def chapman_richards(age: np.ndarray, a: float, b: float, c: float) -> np.ndarra
     return a * (1.0 - np.exp(-b * age)) ** c
 
 
+DEFAULT_TRIM: dict[str, Any] = {"age": 90.0, "delta": 0.05, "patience": 1}
+
+
+def trim_settings(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Tail-trim settings from config keys tail_trim_age / _delta / _patience."""
+    age = cfg.get("tail_trim_age", DEFAULT_TRIM["age"])
+    if isinstance(age, str) and age.strip().lower() in ("none", "null", ""):
+        age = None
+    return {
+        "age": None if age is None else float(age),
+        "delta": float(cfg.get("tail_trim_delta", DEFAULT_TRIM["delta"])),
+        "patience": int(cfg.get("tail_trim_patience", DEFAULT_TRIM["patience"])),
+    }
+
+
+def b_min_setting(cfg: dict[str, Any]) -> float | None:
+    """Lower bound on b (yr⁻¹) from config key cr_b_min; None = default bound (0.01)."""
+    v = cfg.get("cr_b_min")
+    return None if v is None else float(v)
+
+
 def trim_decreasing_tail(
     x: np.ndarray,
     y: np.ndarray,
@@ -127,28 +148,71 @@ def _monotone_theta_from_a(a: np.ndarray, a_lo: float, a_hi: float) -> np.ndarra
     return theta
 
 
+# Extra starting points for the joint fit: a(τ) away from its upper bound with real
+# gaps between quantiles (two scales), crossed with a grid of (b, c) on the scaled-age axis.
+START_A_SCALES = (1.0, 1.3)
+START_A_CAP = 0.85        # fraction of a_hi
+START_A_GAP = 0.1         # minimum step between quantiles, as a fraction of the room left
+START_B = (0.5, 1.0, 2.0)  # ages are scaled by 1/10: b = 0.05, 0.1, 0.2 yr-1
+START_C = (1.5, 3.0, 6.0)
+
+
+def _extra_starts(series, y_scale, a_lo, a_hi, b_bounds, c_bounds) -> list[np.ndarray]:
+    out = []
+    for scale in START_A_SCALES:
+        a = np.array([s["ymax"] / y_scale * scale for s in series], dtype=float)
+        a = np.minimum(a, START_A_CAP * a_hi)
+        for k in range(1, len(a)):
+            a[k] = max(a[k], a[k - 1] + START_A_GAP * (a_hi - a[k - 1]))
+        theta = _monotone_theta_from_a(np.clip(a, a_lo + 1e-3, a_hi - 1e-3), a_lo, a_hi)
+        for b in START_B:
+            for c in START_C:
+                out.append(np.concatenate([theta, [np.clip(b, *b_bounds), np.clip(c, *c_bounds)]]))
+    return out
+
+
 def fit_quantiles(
     filtered_df: pd.DataFrame,
     target: str,
     quantiles: Iterable[float] = FIT_QUANTILES,
+    *,
+    trim: dict[str, Any] | None = None,
+    b_min: float | None = None,
 ) -> dict[float, dict[str, Any]]:
     """
+    ``trim``: optional ``{"age": 90.0 | None, "delta": 0.05, "patience": 1}`` for
+    ``trim_decreasing_tail``; ``age=None`` disables the trim. Defaults reproduce the
+    published fits. ``b_min`` (yr⁻¹) overrides the lower bound on b (default 0.01).
+
     Joint CR fit: shared ``(b, c)``, monotone ``a(τ)`` on the original scale,
     equal (unweighted) residuals.
 
     Scaling uses one shared ``ymax`` across τ so ordered ``a_norm`` stays ordered
-    after back-transform. Warm-start uses a single mid-quantile NLS fit.
+    after back-transform. Starts: the mid-quantile NLS warm start plus
+    ``_extra_starts`` (18 points); the lowest-cost solution is kept.
     """
     taus = [float(t) for t in quantiles]
+    trim = {**DEFAULT_TRIM, **(trim or {})}
+    trim_age = None if trim["age"] is None else float(trim["age"])
+    trim_delta, trim_patience = float(trim["delta"]), int(trim["patience"])
     ages_all = filtered_df["age"].to_numpy(dtype=float)
     a_lo, b_lo, c_lo = _bounds_for_target(target)[0]
     a_hi, b_hi, c_hi = _bounds_for_target(target)[1]
+    if b_min is not None:
+        b_lo = float(b_min) * 10.0  # ages are scaled by 1/10 in the fit
 
     series: list[dict[str, Any]] = []
     for tau in taus:
         col = f"{target}_{int(100 * tau)}th"
         y_all = filtered_df[col].to_numpy(dtype=float)
-        x, y = trim_decreasing_tail(ages_all, y_all, x_threshold=90.0)
+        if trim_age is None:
+            ok = np.isfinite(ages_all)
+            order = np.argsort(ages_all[ok])
+            x, y = ages_all[ok][order], y_all[ok][order]
+        else:
+            x, y = trim_decreasing_tail(
+                ages_all, y_all, x_threshold=trim_age, delta=trim_delta, patience=trim_patience
+            )
         if len(x) < 3 or not np.isfinite(y).any() or np.nanmax(y) <= 0:
             continue
         series.append(
@@ -188,6 +252,7 @@ def fit_quantiles(
     a0 = np.maximum.accumulate(np.clip(a0, a_lo + 1e-6, a_hi - 1e-6))
     theta0 = _monotone_theta_from_a(a0, a_lo, a_hi)
     p0 = np.concatenate([theta0, [b0, c0]])
+    starts = [p0] + _extra_starts(series, y_scale, a_lo, a_hi, (b_lo, b_hi), (c_lo, c_hi))
     lower = np.array([-np.inf] * n_tau + [b_lo, c_lo], dtype=float)
     upper = np.array([np.inf] * n_tau + [b_hi, c_hi], dtype=float)
 
@@ -200,14 +265,21 @@ def fit_quantiles(
             chunks.append(s["y_scaled"] - pred)
         return np.concatenate(chunks)
 
-    sol = least_squares(
-        residuals,
-        p0,
-        bounds=(lower, upper),
-        max_nfev=20000,
-        xtol=1e-10,
-        ftol=1e-10,
-    )
+    # Multi-start: keep the lowest cost. A single start can stall where the warm start
+    # puts a(τ) on its bound (saturated sigmoid, near-zero gradient); the end point then
+    # depends on solver details (it differed between scipy 1.8 and 1.15 for 5 strata).
+    sol = None
+    for st in starts:
+        try:
+            cand = least_squares(
+                residuals, st, bounds=(lower, upper), max_nfev=20000, xtol=1e-10, ftol=1e-10
+            )
+        except (ValueError, np.linalg.LinAlgError):
+            continue
+        if sol is None or cand.cost < sol.cost - 1e-12:
+            sol = cand
+    if sol is None:
+        raise RuntimeError("shared-(b,c) fit failed from every start")
     if not sol.success and sol.cost > residuals(p0).dot(residuals(p0)):
         raise RuntimeError(f"shared-(b,c) fit failed: {sol.message}")
 
@@ -255,7 +327,7 @@ def results_to_row(
                 f"a_error_{suffix}", f"b_error_{suffix}", f"c_error_{suffix}",
                 f"R2_{suffix}", f"D2_{suffix}", f"MAE_{suffix}", f"RMSE_{suffix}",
                 f"MBE_{suffix}", f"MPB_{suffix}", f"slope_bias_{suffix}",
-                f"ymax_{suffix}", f"t50_{suffix}", f"t90_{suffix}", f"r20_{suffix}",
+                f"t50_{suffix}", f"t90_{suffix}", f"R30_{suffix}",
                 f"tau_{suffix}", f"egr_{suffix}",
             ):
                 row[key] = np.nan
@@ -277,10 +349,9 @@ def results_to_row(
         row[f"MPB_{suffix}"] = values["MPB"]
         row[f"slope_bias_{suffix}"] = values["slope_bias"]
 
-        row[f"ymax_{suffix}"] = a
         row[f"t50_{suffix}"] = (-np.log(1.0 - 0.5 ** (1.0 / c)) / b) if a > 0 and b > 0 and c > 0 else np.nan
         row[f"t90_{suffix}"] = (-np.log(1.0 - 0.9 ** (1.0 / c)) / b) if a > 0 and b > 0 and c > 0 else np.nan
-        row[f"r20_{suffix}"] = (a * (1.0 - np.exp(-20.0 * b)) ** c) / 20.0 if b > 0 else np.nan
+        row[f"R30_{suffix}"] = (a * (1.0 - np.exp(-30.0 * b)) ** c) / 30.0 if b > 0 else np.nan
         row[f"tau_{suffix}"] = np.log(c) / b if b > 0 and c > 0 else np.nan
         row[f"egr_{suffix}"] = a * b * c
 
