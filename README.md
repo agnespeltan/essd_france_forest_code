@@ -22,7 +22,7 @@ Each package has `config.example.yaml`, `requirements.txt`, and its own README. 
 
 Published products (CSVs + age GeoTIFFs) are on Zenodo (separate deposit from this code):
 
-- **DOI:** [10.5281/zenodo.23499335](https://doi.org/10.5281/zenodo.23499335)
+- **DOI:** [10.5281/zenodo.24394141](https://doi.org/10.5281/zenodo.24394141)
 - Archives (version 2): `growth_curves.zip`, `age_map.zip`, `disturbance_rate_patches.zip`, `disturbance_severity.zip`, `mean_harvest_age.zip`, plus `tfv_codes.csv` / `ser_codes.csv`
 - Version 2 matches this code. Its README lists the changes from version 1.
 
